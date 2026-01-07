@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delete Account - Only Care</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 700px;
+            margin: 40px auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #000000 0%, #434343 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .warning-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+        }
+        
+        .warning-box h3 {
+            color: #856404;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .warning-box p {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        .info-section {
+            margin-bottom: 30px;
+        }
+        
+        .info-section h2 {
+            color: #000;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+        
+        .info-section h3 {
+            color: #333;
+            font-size: 1.2em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .info-section ul {
+            margin-left: 25px;
+            margin-bottom: 15px;
+        }
+        
+        .info-section li {
+            margin-bottom: 10px;
+            padding-left: 10px;
+        }
+        
+        .steps {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .step {
+            display: flex;
+            margin-bottom: 20px;
+            align-items: flex-start;
+        }
+        
+        .step-number {
+            background: #000;
+            color: white;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        
+        .step-content {
+            flex: 1;
+        }
+        
+        .step-content h4 {
+            margin-bottom: 5px;
+            color: #000;
+        }
+        
+        .contact-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 25px;
+            border-radius: 8px;
+            margin-top: 30px;
+        }
+        
+        .contact-box h3 {
+            color: #1976d2;
+            margin-bottom: 15px;
+        }
+        
+        .contact-info {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .contact-item strong {
+            min-width: 80px;
+            color: #1976d2;
+        }
+        
+        .contact-item a {
+            color: #1976d2;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .contact-item a:hover {
+            text-decoration: underline;
+        }
+        
+        .data-retention {
+            background: #f0f0f0;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .data-retention h4 {
+            color: #000;
+            margin-bottom: 15px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        table th,
+        table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        table th {
+            background: #000;
+            color: white;
+            font-weight: 600;
+        }
+        
+        table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            border-top: 2px solid #eee;
+        }
+        
+        .footer p {
+            margin-bottom: 10px;
+            color: #666;
+        }
+        
+        .footer a {
+            color: #000;
+            font-weight: bold;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                margin: 20px auto;
+            }
+            
+            .header {
+                padding: 30px 20px;
+            }
+            
+            .header h1 {
+                font-size: 1.5em;
+            }
+            
+            .content {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🗑️ Delete Your Account</h1>
+            <p>Only Care - Emotional Support Platform</p>
+        </div>
+        
+        <div class="content">
+            <div class="warning-box">
+                <h3>⚠️ Important Notice</h3>
+                <p><strong>Account deletion is permanent and cannot be undone.</strong></p>
+                <p>Once your account is deleted, you will lose access to all your data, coins, earnings, and conversation history.</p>
+            </div>
+            
+            <div class="info-section">
+                <h2>How to Request Account Deletion</h2>
+                
+                <p>To delete your Only Care account and all associated data, please follow these steps:</p>
+                
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Send Deletion Request</h4>
+                            <p>Email us at <a href="mailto:onlycare@innovfix.in">onlycare@innovfix.in</a> from your registered email address</p>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Include Required Information</h4>
+                            <p>In your email, please include:</p>
+                            <ul>
+                                <li>Your registered email address or phone number</li>
+                                <li>Your display name (if different from email)</li>
+                                <li>Subject line: "Account Deletion Request"</li>
+                                <li>Confirmation that you understand deletion is permanent</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Verification</h4>
+                            <p>We will verify your identity to ensure the request is legitimate. You may be asked to provide additional verification.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>Confirmation</h4>
+                            <p>Once verified, we will send you a confirmation email. Your account will be deleted within <strong>7 business days</strong>.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="info-section">
+                <h2>What Gets Deleted</h2>
+                
+                <h3>Data That Will Be Permanently Deleted:</h3>
+                <ul>
+                    <li><strong>Personal Information:</strong> Name, email, phone number, profile photo</li>
+                    <li><strong>Account Data:</strong> Login credentials, preferences, settings</li>
+                    <li><strong>Session History:</strong> Records of support sessions and conversations</li>
+                    <li><strong>Messages:</strong> All chat messages and communications</li>
+                    <li><strong>Reviews & Ratings:</strong> Any reviews you've given or received</li>
+                    <li><strong>Unused Coins:</strong> Any remaining coin balance (non-refundable)</li>
+                    <li><strong>For Support Providers:</strong> Unpaid earnings below minimum withdrawal amount</li>
+                </ul>
+                
+                <h3>Data That May Be Retained:</h3>
+                <ul>
+                    <li><strong>Legal Compliance:</strong> Transaction records for tax and legal purposes (up to 7 years)</li>
+                    <li><strong>Financial Records:</strong> Payment history for accounting (as required by law)</li>
+                    <li><strong>Security Logs:</strong> IP addresses and security-related data (up to 90 days)</li>
+                    <li><strong>Anonymized Data:</strong> Aggregated analytics data (cannot identify you)</li>
+                </ul>
+                
+                <div class="data-retention">
+                    <h4>📊 Data Retention Timeline</h4>
+                    <table>
+                        <tr>
+                            <th>Data Type</th>
+                            <th>Retention Period</th>
+                        </tr>
+                        <tr>
+                            <td>Personal Information</td>
+                            <td>Deleted immediately</td>
+                        </tr>
+                        <tr>
+                            <td>Session & Message Data</td>
+                            <td>Deleted immediately</td>
+                        </tr>
+                        <tr>
+                            <td>Backup Systems</td>
+                            <td>Up to 30 days</td>
+                        </tr>
+                        <tr>
+                            <td>Financial Records</td>
+                            <td>7 years (legal requirement)</td>
+                        </tr>
+                        <tr>
+                            <td>Security Logs</td>
+                            <td>Up to 90 days</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="info-section">
+                <h2>Before You Delete</h2>
+                
+                <p><strong>Please consider these points before requesting deletion:</strong></p>
+                <ul>
+                    <li>✓ <strong>Withdraw Earnings:</strong> Support providers should withdraw all earnings before deletion</li>
+                    <li>✓ <strong>Unused Coins:</strong> Any remaining coins will be forfeited and cannot be refunded</li>
+                    <li>✓ <strong>Active Sessions:</strong> Complete or cancel any ongoing sessions</li>
+                    <li>✓ <strong>Export Data:</strong> Request a copy of your data before deletion if needed</li>
+                    <li>✓ <strong>Alternative:</strong> You can temporarily deactivate your account instead of deleting it</li>
+                </ul>
+            </div>
+            
+            <div class="info-section">
+                <h2>Processing Time</h2>
+                <ul>
+                    <li><strong>Verification:</strong> 1-2 business days</li>
+                    <li><strong>Account Deletion:</strong> 7 business days from verification</li>
+                    <li><strong>Backup Removal:</strong> Up to 30 days for complete removal from all backup systems</li>
+                </ul>
+            </div>
+            
+            <div class="contact-box">
+                <h3>📧 Contact Information</h3>
+                <p>For account deletion requests or questions, please contact:</p>
+                <div class="contact-info">
+                    <div class="contact-item">
+                        <strong>Email:</strong>
+                        <a href="mailto:onlycare@innovfix.in">onlycare@innovfix.in</a>
+                    </div>
+                    <div class="contact-item">
+                        <strong>Company:</strong>
+                        <span>Innovfix Private Limited</span>
+                    </div>
+                    <div class="contact-item">
+                        <strong>Address:</strong>
+                        <span>Indiqube Ascent, Koramangala, Bangalore - 560034, India</span>
+                    </div>
+                    <div class="contact-item">
+                        <strong>Response:</strong>
+                        <span>Within 48 hours</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="info-section" style="margin-top: 30px;">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="/privacy.html">Privacy Policy</a> - Learn about how we handle your data</li>
+                    <li><a href="/terms.html">Terms of Service</a> - Review our terms and conditions</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p><strong>Only Care by Innovfix Private Limited</strong></p>
+            <p>&copy; 2025 All rights reserved</p>
+            <p><a href="/">Return to Only Care</a></p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+

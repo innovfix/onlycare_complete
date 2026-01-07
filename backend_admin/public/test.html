@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OnlyCare API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .box {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        button {
+            background: #fff;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:active { background: #ddd; }
+        #result { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🎯 OnlyCare API Connection Test</h1>
+    
+    <div class="box">
+        <h3>If you can see this page:</h3>
+        <p class="success">✓ Your phone can reach the server!</p>
+        <p class="success">✓ Network connection is working!</p>
+        <p class="success">✓ Firewall is allowing connections!</p>
+    </div>
+
+    <div class="box">
+        <h3>Test API Endpoint:</h3>
+        <button onclick="testAPI()">Test API Connection</button>
+        <div id="result"></div>
+    </div>
+
+    <div class="box">
+        <h3>Next Steps:</h3>
+        <p>1. If API test works → Rebuild your app in Android Studio</p>
+        <p>2. If API test fails → Check Laravel server is running</p>
+        <p>3. After rebuild → Try saving profile in the app</p>
+    </div>
+
+    <script>
+        function testAPI() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p style="color: #FFA500;">⏳ Testing API...</p>';
+            
+            fetch('http://192.168.0.5:8000/api/v1/settings/app')
+                .then(response => {
+                    if (response.status === 401) {
+                        resultDiv.innerHTML = '<p class="success">✓ API is responding! (401 = needs auth, but server is working)</p>';
+                    } else if (response.ok) {
+                        return response.json().then(data => {
+                            resultDiv.innerHTML = '<p class="success">✓ API is working perfectly!</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                        });
+                    } else {
+                        resultDiv.innerHTML = '<p class="success">✓ Server is responding (Status: ' + response.status + ')</p>';
+                    }
+                })
+                .catch(error => {
+                    resultDiv.innerHTML = '<p class="error">✗ API test failed: ' + error.message + '</p><p>Make sure Laravel server is running!</p>';
+                });
+        }
+    </script>
+</body>
+</html>
+

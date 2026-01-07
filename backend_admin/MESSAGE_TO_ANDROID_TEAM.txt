@@ -1,0 +1,86 @@
+Hi Android Team,
+
+We've investigated the Agora Error 110 issue and found the root cause. Here's what we need from you:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🐛 THE PROBLEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Error 110 fires IMMEDIATELY (within 150ms) when receiver joins Agora channel.
+
+Root Cause: Backend generates Agora tokens with UID = 0, but your app is probably joining with a DIFFERENT UID (like the user's actual ID). Agora rejects this immediately with Error 110.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❓ URGENT QUESTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+What UID value are you passing to rtcEngine.joinChannel()?
+
+Please check your code:
+
+    rtcEngine.joinChannel(
+        token = response.agora_token,
+        channelId = response.channel_name,
+        uid = ???  // ⚠️ WHAT IS THIS VALUE?
+    )
+
+Are you using:
+  A) uid = 0  (✅ This would work)
+  B) uid = userId.toInt()  (❌ This causes Error 110)
+  C) uid = Random.nextInt()  (❌ This causes Error 110)
+  D) Something else?
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 QUICK FIX TO TEST NOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Try changing your joinChannel code to use UID = 0:
+
+    rtcEngine.joinChannel(
+        token = response.agora_token,
+        channelId = response.channel_name,
+        uid = 0  // ✅ Try this
+    )
+
+This should fix Error 110 immediately.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 WHAT WE NEED FROM YOU
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Code snippet showing your joinChannel() call
+2. Debug logs showing what UID value you're using
+3. Test result after changing to uid = 0
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 PROPER SOLUTION (After Testing)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Backend will add "agora_uid" field to API responses:
+
+    {
+      "agora_token": "007...",
+      "channel_name": "call_CALL_123",
+      "agora_uid": 0  // ← New field
+    }
+
+You update your app to use it:
+
+    rtcEngine.joinChannel(
+        response.agora_token,
+        response.channel_name,
+        uid = response.agora_uid  // ✅ Use from API
+    )
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+See attached file "FOR_ANDROID_TEAM.md" for complete details, code examples, and testing steps.
+
+Please let us know:
+1. What UID are you currently using?
+2. Can you test with uid = 0?
+3. What are the results?
+
+Thanks!
+Backend Team
+

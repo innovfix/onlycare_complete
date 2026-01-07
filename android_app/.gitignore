@@ -1,0 +1,34 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Keystore files - NEVER commit these!
+*.jks
+*.keystore
+keystore.properties
+
+# Release artifacts - Build these fresh, don't commit!
+*.aab
+*.apk
+app/release/
+app/debug/
+# Build outputs
+app/release/*.aab
+app/release/*.apk
+*.aab
+*.apk
+build/
+.gradle/
+

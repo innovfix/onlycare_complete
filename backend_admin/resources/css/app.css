@@ -1,0 +1,348 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Pure Black & White Theme - No Colors */
+:root {
+    --color-primary: #000000;
+    --color-secondary: #ffffff;
+    --color-border: #e5e5e5;
+    --color-hover: #f5f5f5;
+}
+
+.dark {
+    --color-primary: #ffffff;
+    --color-secondary: #000000;
+    --color-border: #404040;
+    --color-hover: #1a1a1a;
+}
+
+/* Override all colored classes to black/white */
+.bg-blue-500, .bg-blue-600, .bg-blue-700,
+.bg-green-500, .bg-green-600, .bg-green-700,
+.bg-red-500, .bg-red-600, .bg-red-700,
+.bg-yellow-500, .bg-yellow-600, .bg-yellow-700,
+.bg-purple-500, .bg-purple-600, .bg-purple-700,
+.bg-indigo-500, .bg-indigo-600, .bg-indigo-700 {
+    background-color: #000000 !important;
+}
+
+.dark .bg-blue-500, .dark .bg-blue-600, .dark .bg-blue-700,
+.dark .bg-green-500, .dark .bg-green-600, .dark .bg-green-700,
+.dark .bg-red-500, .dark .bg-red-600, .dark .bg-red-700,
+.dark .bg-yellow-500, .dark .bg-yellow-600, .dark .bg-yellow-700,
+.dark .bg-purple-500, .dark .bg-purple-600, .dark .bg-purple-700,
+.dark .bg-indigo-500, .dark .bg-indigo-600, .dark .bg-indigo-700 {
+    background-color: #ffffff !important;
+}
+
+.text-blue-500, .text-blue-600, .text-blue-700,
+.text-green-500, .text-green-600, .text-green-700,
+.text-red-500, .text-red-600, .text-red-700,
+.text-yellow-500, .text-yellow-600, .text-yellow-700,
+.text-purple-500, .text-purple-600, .text-purple-700,
+.text-indigo-500, .text-indigo-600, .text-indigo-700 {
+    color: #000000 !important;
+}
+
+.dark .text-blue-500, .dark .text-blue-600, .dark .text-blue-700,
+.dark .text-green-500, .dark .text-green-600, .dark .text-green-700,
+.dark .text-red-500, .dark .text-red-600, .dark .text-red-700,
+.dark .text-yellow-500, .dark .text-yellow-600, .dark .text-yellow-700,
+.dark .text-purple-500, .dark .text-purple-600, .dark .text-purple-700,
+.dark .text-indigo-500, .dark .text-indigo-600, .dark .text-indigo-700 {
+    color: #ffffff !important;
+}
+
+/* Force all status badges to black/white */
+.bg-green-100, .bg-red-100, .bg-yellow-100, .bg-blue-100, .bg-purple-100,
+.bg-green-200, .bg-red-200, .bg-yellow-200, .bg-blue-200, .bg-purple-200 {
+    background-color: #f5f5f5 !important;
+    color: #000000 !important;
+}
+
+.dark .bg-green-100, .dark .bg-red-100, .dark .bg-yellow-100, .dark .bg-blue-100, .dark .bg-purple-100,
+.dark .bg-green-200, .dark .bg-red-200, .dark .bg-yellow-200, .dark .bg-blue-200, .dark .bg-purple-200 {
+    background-color: #2a2a2a !important;
+    color: #ffffff !important;
+}
+
+.bg-green-900, .bg-red-900, .bg-yellow-900, .bg-blue-900, .bg-purple-900 {
+    background-color: #000000 !important;
+}
+
+.text-green-800, .text-red-800, .text-yellow-800, .text-blue-800, .text-purple-800,
+.text-green-700, .text-red-700, .text-yellow-700, .text-blue-700, .text-purple-700 {
+    color: #000000 !important;
+}
+
+.dark .text-green-200, .dark .text-red-200, .dark .text-yellow-200, .dark .text-blue-200, .dark .text-purple-200 {
+    color: #ffffff !important;
+}
+
+/* Borders */
+.border-blue-500, .border-green-500, .border-red-500, .border-yellow-500,
+.border-blue-600, .border-green-600, .border-red-600, .border-yellow-600 {
+    border-color: #000000 !important;
+}
+
+.dark .border-blue-500, .dark .border-green-500, .dark .border-red-500, .dark .border-yellow-500 {
+    border-color: #ffffff !important;
+}
+
+/* Hover states */
+.hover\:bg-blue-700:hover, .hover\:bg-green-700:hover, 
+.hover\:bg-red-700:hover, .hover\:bg-yellow-700:hover {
+    background-color: #333333 !important;
+}
+
+.dark .hover\:bg-blue-700:hover, .dark .hover\:bg-green-700:hover,
+.dark .hover\:bg-red-700:hover, .dark .hover\:bg-yellow-700:hover {
+    background-color: #cccccc !important;
+}
+
+/* Custom Dark Mode Styles */
+body {
+    @apply bg-dark-bg text-dark-text;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    @apply bg-dark-bg;
+}
+
+::-webkit-scrollbar-thumb {
+    @apply bg-dark-border rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+}
+
+/* Card Styles */
+.card {
+    @apply bg-dark-surface rounded-lg shadow-lg border border-dark-border;
+}
+
+.card-header {
+    @apply px-6 py-4 border-b border-dark-border;
+}
+
+.card-body {
+    @apply p-6;
+}
+
+/* Button Styles - Force visible colors */
+.btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+}
+
+.btn-primary {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+}
+
+.btn-primary:hover {
+    background-color: #333333 !important;
+}
+
+.btn-success {
+    background-color: #16a34a !important;
+    color: #ffffff !important;
+}
+
+.btn-success:hover {
+    background-color: #15803d !important;
+}
+
+.btn-danger {
+    background-color: #dc2626 !important;
+    color: #ffffff !important;
+}
+
+.btn-danger:hover {
+    background-color: #b91c1c !important;
+}
+
+.btn-warning {
+    background-color: #eab308 !important;
+    color: #000000 !important;
+}
+
+.btn-warning:hover {
+    background-color: #ca8a04 !important;
+}
+
+.btn-secondary {
+    background-color: #4b5563 !important;
+    color: #ffffff !important;
+}
+
+.btn-secondary:hover {
+    background-color: #374151 !important;
+}
+
+/* Table Styles */
+.table {
+    @apply w-full text-sm text-left;
+}
+
+.table thead {
+    @apply text-xs uppercase bg-dark-surface border-b border-dark-border;
+}
+
+.table thead th {
+    @apply px-6 py-3 font-semibold text-dark-text;
+}
+
+.table tbody tr {
+    @apply border-b border-dark-border hover:bg-dark-surface/50 transition;
+}
+
+.table tbody td {
+    @apply px-6 py-4;
+}
+
+/* Badge Styles */
+.badge {
+    @apply px-2.5 py-1 rounded-full text-xs font-medium;
+}
+
+.badge-success {
+    @apply bg-success/20 text-success border border-success/30;
+}
+
+.badge-danger {
+    @apply bg-danger/20 text-danger border border-danger/30;
+}
+
+.badge-warning {
+    @apply bg-warning/20 text-warning border border-warning/30;
+}
+
+.badge-primary {
+    @apply bg-primary/20 text-primary border border-primary/30;
+}
+
+.badge-secondary {
+    @apply bg-gray-500/20 text-gray-400 border border-gray-500/30;
+}
+
+/* Form Styles - Force visible inputs */
+.form-input, 
+input[type="text"], 
+input[type="email"], 
+input[type="password"], 
+input[type="number"], 
+input[type="tel"], 
+input[type="url"],
+input[type="date"],
+input[type="time"],
+textarea,
+select {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 0.5rem;
+    padding: 0.625rem 1rem;
+    width: 100%;
+}
+
+.form-input:focus,
+input:focus,
+textarea:focus,
+select:focus {
+    outline: none !important;
+    ring: 2px !important;
+    ring-color: #16a34a !important;
+    border-color: #16a34a !important;
+}
+
+.form-input::placeholder,
+input::placeholder,
+textarea::placeholder {
+    color: #6b7280 !important;
+}
+
+.form-label {
+    @apply block text-sm font-medium text-dark-text mb-2;
+}
+
+.form-select {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+}
+
+/* Stat Card */
+.stat-card {
+    @apply card p-6;
+}
+
+.stat-icon {
+    @apply w-12 h-12 rounded-lg flex items-center justify-center text-2xl;
+}
+
+.stat-value {
+    @apply text-3xl font-bold text-dark-text;
+}
+
+.stat-label {
+    @apply text-sm text-dark-text-secondary;
+}
+
+.stat-change {
+    @apply text-sm font-medium;
+}
+
+/* Loading Spinner */
+.spinner {
+    @apply inline-block w-6 h-6 border-4 border-dark-border border-t-primary rounded-full animate-spin;
+}
+
+/* Alert Styles */
+.alert {
+    @apply p-4 rounded-lg border;
+}
+
+.alert-success {
+    @apply bg-success/10 border-success/30 text-success;
+}
+
+.alert-danger {
+    @apply bg-danger/10 border-danger/30 text-danger;
+}
+
+.alert-warning {
+    @apply bg-warning/10 border-warning/30 text-warning;
+}
+
+.alert-info {
+    @apply bg-primary/10 border-primary/30 text-primary;
+}
+
+/* Sidebar Active Link */
+.sidebar-link {
+    @apply flex items-center px-4 py-3 text-dark-text-secondary hover:bg-dark-surface hover:text-dark-text transition rounded-lg;
+}
+
+.sidebar-link.active {
+    @apply bg-primary/10 text-primary border-l-4 border-primary;
+}
+
+/* Responsive utilities */
+@media (max-width: 768px) {
+    .card-body {
+        @apply p-4;
+    }
+    
+    .table thead th,
+    .table tbody td {
+        @apply px-3 py-2;
+    }
+}
+

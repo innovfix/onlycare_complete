@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OnlyCare WebSocket Test Client</title>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 30px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .status.connected {
+            background: #10b981;
+            color: white;
+        }
+        .status.disconnected {
+            background: #ef4444;
+            color: white;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .section h2 {
+            color: #374151;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #4b5563;
+            font-weight: 600;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .log-area {
+            background: #1f2937;
+            color: #10b981;
+            padding: 15px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+        }
+        .log-entry.error {
+            color: #ef4444;
+        }
+        .log-entry.success {
+            color: #10b981;
+        }
+        .log-entry.info {
+            color: #3b82f6;
+        }
+        .log-entry.warning {
+            color: #f59e0b;
+        }
+        .timestamp {
+            color: #6b7280;
+            margin-right: 10px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 OnlyCare WebSocket Test Client</h1>
+        <div id="status" class="status disconnected">⚫ Disconnected</div>
+        
+        <div class="grid">
+            <div class="section">
+                <h2>📡 Connection</h2>
+                <div class="form-group">
+                    <label>WebSocket URL:</label>
+                    <input type="text" id="socketUrl" value="https://onlycare.in" placeholder="https://onlycare.in">
+                </div>
+                <div class="form-group">
+                    <label>User ID:</label>
+                    <input type="text" id="userId" value="test-user-123" placeholder="Enter user ID">
+                </div>
+                <div class="form-group">
+                    <label>Auth Token:</label>
+                    <input type="text" id="authToken" placeholder="Enter Bearer token">
+                </div>
+                <button onclick="connect()" id="connectBtn">Connect</button>
+                <button onclick="disconnect()" id="disconnectBtn" disabled>Disconnect</button>
+            </div>
+
+            <div class="section">
+                <h2>📞 Call Actions</h2>
+                <div class="form-group">
+                    <label>Receiver ID:</label>
+                    <input type="text" id="receiverId" placeholder="Enter receiver user ID">
+                </div>
+                <div class="form-group">
+                    <label>Call Type:</label>
+                    <select id="callType">
+                        <option value="video">Video Call</option>
+                        <option value="audio">Audio Call</option>
+                    </select>
+                </div>
+                <button onclick="initiateCall()" id="callBtn" disabled>📞 Initiate Call</button>
+                <button onclick="acceptCall()" id="acceptBtn" disabled>✅ Accept Call</button>
+                <button onclick="rejectCall()" id="rejectBtn" disabled>❌ Reject Call</button>
+                <button onclick="endCall()" id="endBtn" disabled>📴 End Call</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📋 Event Log</h2>
+            <div class="log-area" id="logArea"></div>
+            <button onclick="clearLog()" style="margin-top: 10px;">Clear Log</button>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let currentCallId = null;
+
+        function log(message, type = 'info') {
+            const logArea = document.getElementById('logArea');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `<span class="timestamp">[${timestamp}]</span>${message}`;
+            logArea.appendChild(entry);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function updateStatus(connected) {
+            const statusEl = document.getElementById('status');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const callBtn = document.getElementById('callBtn');
+            const acceptBtn = document.getElementById('acceptBtn');
+            const rejectBtn = document.getElementById('rejectBtn');
+            const endBtn = document.getElementById('endBtn');
+
+            if (connected) {
+                statusEl.className = 'status connected';
+                statusEl.textContent = '🟢 Connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                callBtn.disabled = false;
+            } else {
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = '⚫ Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                callBtn.disabled = true;
+                acceptBtn.disabled = true;
+                rejectBtn.disabled = true;
+                endBtn.disabled = true;
+            }
+        }
+
+        function connect() {
+            const socketUrl = document.getElementById('socketUrl').value;
+            const userId = document.getElementById('userId').value;
+            const authToken = document.getElementById('authToken').value;
+
+            if (!userId || !authToken) {
+                log('⚠️ Please enter User ID and Auth Token', 'warning');
+                return;
+            }
+
+            log(`🔌 Connecting to ${socketUrl}...`, 'info');
+
+            socket = io(socketUrl, {
+                auth: {
+                    token: authToken,
+                    userId: userId
+                },
+                transports: ['websocket', 'polling']
+            });
+
+            socket.on('connect', () => {
+                log('✅ Connected successfully!', 'success');
+                updateStatus(true);
+            });
+
+            socket.on('disconnect', (reason) => {
+                log(`❌ Disconnected: ${reason}`, 'error');
+                updateStatus(false);
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`❌ Connection error: ${error.message}`, 'error');
+                updateStatus(false);
+            });
+
+            // Call events
+            socket.on('call:incoming', (data) => {
+                log(`📞 Incoming call from ${data.callerName} (${data.callType})`, 'info');
+                log(`   Call ID: ${data.callId}`, 'info');
+                currentCallId = data.callId;
+                document.getElementById('acceptBtn').disabled = false;
+                document.getElementById('rejectBtn').disabled = false;
+            });
+
+            socket.on('call:accepted', (data) => {
+                log(`✅ Call accepted! Call ID: ${data.callId}`, 'success');
+                document.getElementById('endBtn').disabled = false;
+            });
+
+            socket.on('call:rejected', (data) => {
+                log(`❌ Call rejected: ${data.reason}`, 'error');
+                currentCallId = null;
+                document.getElementById('acceptBtn').disabled = true;
+                document.getElementById('rejectBtn').disabled = true;
+            });
+
+            socket.on('call:ended', (data) => {
+                log(`📴 Call ended: ${data.reason}`, 'warning');
+                currentCallId = null;
+                document.getElementById('endBtn').disabled = true;
+            });
+
+            socket.on('call:timeout', (data) => {
+                log(`⏱️ Call timeout: ${data.reason}`, 'warning');
+                currentCallId = null;
+            });
+
+            socket.on('call:busy', (data) => {
+                log(`📵 User is busy`, 'warning');
+            });
+
+            socket.on('user:online', (data) => {
+                log(`🟢 User ${data.userId} came online`, 'success');
+            });
+
+            socket.on('user:offline', (data) => {
+                log(`⚫ User ${data.userId} went offline`, 'warning');
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                updateStatus(false);
+                log('🔌 Disconnected', 'info');
+            }
+        }
+
+        function initiateCall() {
+            const receiverId = document.getElementById('receiverId').value;
+            const callType = document.getElementById('callType').value;
+
+            if (!receiverId) {
+                log('⚠️ Please enter Receiver ID', 'warning');
+                return;
+            }
+
+            currentCallId = `call-${Date.now()}`;
+
+            const callData = {
+                receiverId: receiverId,
+                callId: currentCallId,
+                callType: callType,
+                channelName: `channel-${currentCallId}`,
+                agoraToken: 'test-token-123'
+            };
+
+            log(`📞 Initiating ${callType} call to ${receiverId}...`, 'info');
+
+            socket.emit('call:initiate', callData, (response) => {
+                if (response.success) {
+                    log(`✅ Call initiated successfully!`, 'success');
+                    log(`   Call ID: ${response.callId}`, 'info');
+                    document.getElementById('endBtn').disabled = false;
+                } else {
+                    log(`❌ Call failed: ${response.error}`, 'error');
+                    if (response.useFcmFallback) {
+                        log(`   🔔 Falling back to FCM notification`, 'warning');
+                    }
+                }
+            });
+        }
+
+        function acceptCall() {
+            if (!currentCallId) {
+                log('⚠️ No active call to accept', 'warning');
+                return;
+            }
+
+            log(`✅ Accepting call ${currentCallId}...`, 'info');
+            socket.emit('call:accept', { callId: currentCallId });
+            
+            document.getElementById('acceptBtn').disabled = true;
+            document.getElementById('rejectBtn').disabled = true;
+            document.getElementById('endBtn').disabled = false;
+        }
+
+        function rejectCall() {
+            if (!currentCallId) {
+                log('⚠️ No active call to reject', 'warning');
+                return;
+            }
+
+            log(`❌ Rejecting call ${currentCallId}...`, 'info');
+            socket.emit('call:reject', { 
+                callId: currentCallId,
+                reason: 'User declined'
+            });
+            
+            currentCallId = null;
+            document.getElementById('acceptBtn').disabled = true;
+            document.getElementById('rejectBtn').disabled = true;
+        }
+
+        function endCall() {
+            if (!currentCallId) {
+                log('⚠️ No active call to end', 'warning');
+                return;
+            }
+
+            log(`📴 Ending call ${currentCallId}...`, 'info');
+            socket.emit('call:end', { callId: currentCallId });
+            
+            currentCallId = null;
+            document.getElementById('endBtn').disabled = true;
+        }
+
+        function clearLog() {
+            document.getElementById('logArea').innerHTML = '';
+        }
+
+        // Initial log
+        log('💡 Welcome to OnlyCare WebSocket Test Client', 'success');
+        log('📝 Instructions:', 'info');
+        log('   1. Enter your WebSocket URL (e.g., https://onlycare.in)', 'info');
+        log('   2. Enter your User ID and Auth Token', 'info');
+        log('   3. Click Connect', 'info');
+        log('   4. Test call features once connected', 'info');
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+

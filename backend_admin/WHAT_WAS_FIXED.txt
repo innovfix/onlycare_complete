@@ -1,0 +1,66 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          ✅ ISSUE FIXED: call_switch REMOVED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROBLEM:
+--------
+Documentation was showing 3 parameters:
+❌ receiver_id
+❌ call_type  
+❌ call_switch  ← THIS WAS WRONG!
+
+But the actual controller only accepts 2 parameters!
+
+
+SOLUTION:
+---------
+✅ Removed call_switch from ALL documentation
+✅ Verified controller has ONLY 2 parameters
+✅ Updated web docs (calls.blade.php)
+
+
+RESULT:
+-------
+API Documentation NOW CORRECT:
+✅ receiver_id  (required)
+✅ call_type    (required)
+
+NO call_switch!
+
+
+CORRECT REQUEST FORMAT:
+-----------------------
+{
+  "receiver_id": "USR_1234567890",
+  "call_type": "AUDIO"
+}
+
+
+WHY call_switch WAS BAD:
+------------------------
+- It bypassed busy status validation
+- Created security hole
+- Bad design from HIMA app
+- We removed it in our critical analysis
+
+
+VERIFICATION:
+-------------
+✅ CallController.php → ONLY 2 params
+✅ calls.blade.php → ONLY 2 params shown
+✅ calls-complete.blade.php → ONLY 2 params
+✅ All docs match the actual API
+
+
+STATUS: ✅ FIXED AND VERIFIED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Refresh your browser to see the updated documentation!
+http://localhost/only_care_admin/public/api-docs/calls
+
+
+
+
+
+
+

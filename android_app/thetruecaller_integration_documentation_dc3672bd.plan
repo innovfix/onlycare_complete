@@ -1,0 +1,67 @@
+---
+name: Truecaller Auto-Detect Mobile Number (Android)
+overview: Integrate Truecaller so that if the user has Truecaller installed, we can auto-detect their verified mobile number and prefill the Login screen. If Truecaller is not available, fallback to normal OTP flow.
+links:
+  - https://developer.truecaller.com/
+  - https://docs.truecaller.com/truecaller-sdk/getting-started
+---
+
+## Goal
+
+- If **Truecaller is usable** on the device, start the Truecaller flow and **auto-fill the 10-digit phone number** on the Login screen.
+- If Truecaller is **not usable** (not installed / user not logged in / verification required / failure), the app should continue to work with **manual phone input + OTP**.
+
+## Required Credentials (from Truecaller)
+
+- **Client ID**: Create an app in the Truecaller Developer Portal and copy the Client ID.
+  - Portal: `https://developer.truecaller.com/`
+- **Package name**: Must match `applicationId` (`com.onlycare.app`).
+- **SHA-256**: Add both debug + release SHA-256 fingerprints in the portal.
+
+## Android App Changes (OnlyCare)
+
+### 1) Dependency
+
+- `app/build.gradle.kts`
+  - Add: `implementation("com.truecaller.android.sdk:truecaller-sdk:3.0.0")`
+
+### 2) Manifest
+
+- `app/src/main/AndroidManifest.xml`
+  - Add `<queries>` for `com.truecaller` (Android 11+ package visibility)
+  - Add meta-data:
+    - `android:name="com.truecaller.android.sdk.ClientId"`
+    - `android:value="@string/clientID"`
+
+### 3) Client ID string
+
+- `app/src/main/res/values/strings.xml`
+  - Add:
+    - `<string name="clientID">YOUR_TRUECALLER_CLIENT_ID</string>`
+  - Replace placeholder with the real Client ID from the portal.
+
+### 4) Forward Activity result to Truecaller SDK
+
+- `app/src/main/java/com/onlycare/app/presentation/MainActivity.kt`
+  - Override `onActivityResult(...)` and forward to Truecaller SDK:
+    - `TcSdk.getInstance().onActivityResultObtained(...)`
+
+### 5) Login auto-fill behavior
+
+- `app/src/main/java/com/onlycare/app/presentation/screens/auth/LoginScreen.kt`
+  - Initialize `TcSdk` and check `isOAuthFlowUsable`
+  - Auto-attempt once when the screen opens (only if phone is empty)
+  - On success:
+    - Exchange auth code → access token (`/v1/token`)
+    - Fetch userinfo (`/v1/userinfo`)
+    - Parse `phone_number` and prefill the phone input
+  - Show a retry button + error text if needed (optional UX).
+
+## Testing Checklist
+
+- **Truecaller installed & logged in**: Login screen auto-fills phone.
+- **Truecaller not installed**: No crash; user can type phone and use OTP.
+- **User cancels Truecaller / verification required**: No crash; fallback to manual.
+- **Invalid / missing clientID**: No crash; show message and fallback to manual.
+
+

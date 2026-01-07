@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Premium Minimal Splash Theme for Android 12+ -->
+    <style name="Theme.OnlyCare.Splash" parent="Theme.SplashScreen">
+        <!-- Match app's in-app splash (pure white background, no icon) -->
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_empty_icon</item>
+        <item name="windowSplashScreenAnimationDuration">0</item>
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        
+        <!-- Pre-Android 12 startup window background -->
+        <item name="android:windowBackground">@android:color/white</item>
+
+        <!-- System bars (white with dark icons) -->
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        
+        <!-- Post-splash theme -->
+        <item name="postSplashScreenTheme">@style/Theme.OnlyCare.Main</item>
+    </style>
+</resources>
+

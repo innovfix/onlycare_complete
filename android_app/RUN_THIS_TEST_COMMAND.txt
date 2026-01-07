@@ -1,0 +1,51 @@
+# Quick Test Commands
+
+## Test Call Cancellation (Male ends before Female accepts)
+
+### Step 1: Start Logging on Both Devices
+
+Terminal 1 (Male device):
+adb -s MALE_DEVICE_ID logcat -c && adb -s MALE_DEVICE_ID logcat | grep -E "cancelCall|call:cancel|endCall.*Waiting"
+
+Terminal 2 (Female device):
+adb -s FEMALE_DEVICE_ID logcat -c && adb -s FEMALE_DEVICE_ID logcat | grep -E "call:cancelled|CALL CANCELLED|IncomingCallActivity"
+
+### Step 2: Perform Test
+
+1. Male calls Female
+2. Female's phone rings (incoming call screen shows)
+3. Male taps "End Call" BEFORE Female accepts
+4. Watch the logs in both terminals
+
+### Step 3: Check Results
+
+MALE DEVICE should show:
+✅ "Waiting for receiver: true"
+✅ "🚫 Caller ending call before receiver accepts"
+✅ "📤 EMITTING call:cancel to server"
+✅ "✅ call:cancel emitted successfully"
+
+FEMALE DEVICE should show:
+✅ "🚫 CALL CANCELLED EVENT RECEIVED (WebSocket)"
+✅ "✅ MATCH! Caller cancelled this call"
+✅ "🛑 STOPPING RINGING"
+
+IF FEMALE DEVICE SHOWS NOTHING:
+❌ Backend is not forwarding the call:cancelled event
+❌ Need to tell backend developer to implement it
+
+---
+
+If you don't know device IDs:
+adb devices
+
+Then replace MALE_DEVICE_ID and FEMALE_DEVICE_ID with actual device IDs
+
+
+
+
+
+
+
+
+
