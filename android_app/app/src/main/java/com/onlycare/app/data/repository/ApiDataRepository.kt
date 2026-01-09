@@ -616,20 +616,53 @@ class ApiDataRepository @Inject constructor(
     
     suspend fun getCurrentUserDto(): Result<UserDto> {
         return try {
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "📡 API CALL: GET /api/v1/users/me")
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "Making request...")
+            
             val response = execute(userApiService.getCurrentUser())
             
-            if (response.isSuccessful && response.body()?.success == true) {
-                val userData = response.body()?.data
+            Log.d(TAG, "Response received:")
+            Log.d(TAG, "   - HTTP Code: ${response.code()}")
+            Log.d(TAG, "   - Success: ${response.isSuccessful}")
+            Log.d(TAG, "   - Message: ${response.message()}")
+            
+            val responseBody = response.body()
+            Log.d(TAG, "   - Body Success: ${responseBody?.success}")
+            Log.d(TAG, "   - Body Data: ${if (responseBody?.data != null) "Present" else "Null"}")
+            
+            if (response.isSuccessful && responseBody?.success == true) {
+                val userData = responseBody.data
                 if (userData != null) {
+                    Log.d(TAG, "✅ User data extracted successfully")
+                    Log.d(TAG, "   - User ID: ${userData.id}")
+                    Log.d(TAG, "   - Name: ${userData.name}")
+                    Log.d(TAG, "   - isVerified: ${userData.isVerified}")
+                    Log.d(TAG, "   - kycStatus: ${userData.kycStatus}")
+                    Log.d(TAG, "   - verifiedDatetime: ${userData.verifiedDatetime}")
+                    Log.d(TAG, "========================================")
                     Result.success(userData)
                 } else {
+                    Log.e(TAG, "❌ Response body data is null")
+                    Log.d(TAG, "========================================")
                     Result.failure(Exception("Failed to get user: No data"))
                 }
             } else {
+                val errorBody = response.errorBody()?.string()
+                Log.e(TAG, "❌ API call failed")
+                Log.e(TAG, "   - Error Body: $errorBody")
+                Log.d(TAG, "========================================")
                 Result.failure(Exception("Failed to get user: ${response.message()}"))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "getCurrentUserDto error", e)
+            Log.e(TAG, "========================================")
+            Log.e(TAG, "❌ EXCEPTION in getCurrentUserDto")
+            Log.e(TAG, "========================================")
+            Log.e(TAG, "Error: ${e.message}")
+            Log.e(TAG, "Exception Type: ${e.javaClass.simpleName}")
+            e.printStackTrace()
+            Log.e(TAG, "========================================")
             Result.failure(e)
         }
     }

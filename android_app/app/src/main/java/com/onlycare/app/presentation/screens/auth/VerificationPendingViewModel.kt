@@ -56,9 +56,28 @@ class VerificationPendingViewModel @Inject constructor(
 
                     val result = repository.getCurrentUserDto()
                     result.onSuccess { dto ->
+                        Log.i(TAG, "========================================")
+                        Log.i(TAG, "📡 VERIFICATION PENDING - API RESPONSE")
+                        Log.i(TAG, "========================================")
+                        Log.i(TAG, "Endpoint: GET /api/v1/users/me")
+                        Log.i(TAG, "Status: SUCCESS")
+                        Log.i(TAG, "")
+                        Log.i(TAG, "📋 Response Data:")
+                        Log.i(TAG, "   - User ID: ${dto.id}")
+                        Log.i(TAG, "   - Name: ${dto.name}")
+                        Log.i(TAG, "   - isVerified (raw): ${dto.isVerified}")
+                        Log.i(TAG, "   - verifiedDatetime: ${dto.verifiedDatetime ?: "null"}")
+                        Log.i(TAG, "   - kycStatus: ${dto.kycStatus ?: "null"}")
+                        Log.i(TAG, "")
+                        
                         val verifiedValue = dto.isVerified
                         val verified = isVerifiedFromDto(verifiedValue, dto.verifiedDatetime, dto.kycStatus)
-                        Log.d(TAG, "Polled users/me: isVerified=$verified")
+                        
+                        Log.i(TAG, "🔍 Verification Check:")
+                        Log.i(TAG, "   - isVerified (parsed): $verified")
+                        Log.i(TAG, "   - verifiedDatetime check: ${!dto.verifiedDatetime.isNullOrBlank()}")
+                        Log.i(TAG, "   - kycStatus check: ${dto.kycStatus?.lowercase()?.trim()}")
+                        Log.i(TAG, "========================================")
 
                         if (verified) {
                             // Female→Female referral reward should be applied ONLY when user is actually verified.
@@ -84,7 +103,15 @@ class VerificationPendingViewModel @Inject constructor(
                             return@launch
                         }
                     }.onFailure { e ->
-                        Log.w(TAG, "Polling users/me failed: ${e.message}")
+                        Log.e(TAG, "========================================")
+                        Log.e(TAG, "❌ VERIFICATION PENDING - API ERROR")
+                        Log.e(TAG, "========================================")
+                        Log.e(TAG, "Endpoint: GET /api/v1/users/me")
+                        Log.e(TAG, "Status: FAILED")
+                        Log.e(TAG, "Error: ${e.message}")
+                        Log.e(TAG, "Exception: ${e.javaClass.simpleName}")
+                        e.printStackTrace()
+                        Log.e(TAG, "========================================")
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Polling exception: ${e.message}")
