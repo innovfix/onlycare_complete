@@ -192,7 +192,7 @@ class AuthController extends Controller
                 'gender' => 'MALE',
                 'user_type' => 'MALE',  // ✅ CRITICAL: Also set user_type for consistency
                 'last_seen' => time(),
-                'is_verified' => true
+                'is_verified' => false  // ✅ FIX: Users must complete KYC to get verified
             ]);
         }
 
