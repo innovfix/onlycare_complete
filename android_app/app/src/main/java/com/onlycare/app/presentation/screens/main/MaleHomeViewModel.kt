@@ -1,4 +1,4 @@
-﻿package com.onlycare.app.presentation.screens.main
+package com.onlycare.app.presentation.screens.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

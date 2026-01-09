@@ -48,7 +48,9 @@ data class AudioCallState(
     // Switch to video flow
     val showSwitchToVideoDialog: Boolean = false,
     val switchToVideoDeclinedMessage: String? = null,
-    val shouldNavigateToVideo: Boolean = false
+    val shouldNavigateToVideo: Boolean = false,
+    // ✅ NEW: Guard against premature ending from stale state/jobs
+    val callReallyStarted: Boolean = false  // Only true after call is properly initialized and ready
 )
 
 @HiltViewModel
@@ -58,8 +60,36 @@ class AudioCallViewModel @Inject constructor(
     private val webSocketManager: WebSocketManager
 ) : ViewModel() {
     
+    init {
+        Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+        Log.e(TAG, "║ 🆕 AudioCallViewModel CREATED (NEW INSTANCE)")
+        Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+        Log.e(TAG, "   Instance hashCode: ${this.hashCode()}")
+        Log.e(TAG, "════════════════════════════════════════════════════════════")
+    }
+    
     private val _state = MutableStateFlow(AudioCallState())
     val state: StateFlow<AudioCallState> = _state.asStateFlow()
+    
+    /**
+     * Helper function to log when isCallEnded is set to true
+     * Includes stack trace to see what triggered it
+     */
+    private fun logCallEnded(reason: String) {
+        Log.e(TAG, "========================================")
+        Log.e(TAG, "🚨 SETTING isCallEnded = true")
+        Log.e(TAG, "========================================")
+        Log.e(TAG, "Reason: $reason")
+        Log.e(TAG, "Current callId: ${_state.value.callId}")
+        Log.e(TAG, "callReallyStarted: ${_state.value.callReallyStarted}")
+        Log.e(TAG, "Duration: ${_state.value.duration}")
+        Log.e(TAG, "ViewModel instance: ${this.hashCode()}")
+        Log.e(TAG, "Stack trace:")
+        Thread.currentThread().stackTrace.take(10).forEach { element ->
+            Log.e(TAG, "  at $element")
+        }
+        Log.e(TAG, "========================================")
+    }
     
     private var agoraManager: AgoraManager? = null
     private var lastDeductionMinute = 0
@@ -127,6 +157,7 @@ class AudioCallViewModel @Inject constructor(
                             connectionTimeoutJob?.cancel()
                             callStatusPollingJob?.cancel()
                             
+                            logCallEnded("WebSocket - User Busy")
                             _state.update {
                                 it.copy(
                                     isCallEnded = true,
@@ -192,6 +223,7 @@ class AudioCallViewModel @Inject constructor(
                             Log.d(TAG, "✅ Other user ended the call - triggering navigation to call end screen")
                             
                             // Mark call as ended
+                            logCallEnded("WebSocket - Call Ended by Other User")
                             _state.update {
                                 it.copy(
                                     isCallEnded = true,
@@ -257,9 +289,18 @@ class AudioCallViewModel @Inject constructor(
         callStatusPollingJob?.cancel()
         callStatusPollingJob = viewModelScope.launch {
             var shouldContinuePolling = true
+            val initialCallId = callId  // ✅ CRITICAL: Capture callId at start to prevent checking wrong call
             
             while (shouldContinuePolling) {
                 kotlinx.coroutines.delay(2000) // Poll every 2 seconds
+                
+                // ✅ CRITICAL: Only poll if this is still the current call (prevent stale polling from previous call)
+                val currentCallId = _state.value.callId
+                if (currentCallId != initialCallId || currentCallId.isNullOrEmpty()) {
+                    Log.d(TAG, "⚠️ Call ID changed or empty - stopping polling (callId was: $initialCallId, now: $currentCallId)")
+                    shouldContinuePolling = false
+                    return@launch
+                }
                 
                 // Stop polling if call has ended
                 if (_state.value.isCallEnded || _state.value.remoteUserJoined || _state.value.callAccepted) {
@@ -276,13 +317,29 @@ class AudioCallViewModel @Inject constructor(
                     result.onSuccess { call ->
                         Log.d(TAG, "📊 Call status: ${call.status}")
                         
+                        // ✅ CRITICAL: Double-check this is still the current call before updating state
+                        if (_state.value.callId != initialCallId) {
+                            Log.d(TAG, "⚠️ Call ID changed during polling - ignoring status update")
+                            shouldContinuePolling = false
+                            return@launch
+                        }
+                        
                         when (call.status?.uppercase()) {
                             "REJECTED", "DECLINED", "ENDED" -> {
                                 Log.d(TAG, "⚡ Call was rejected/ended - detected via API polling")
                                 
+                                // ✅ CRITICAL: Only set isCallEnded if call was really started
+                                // This prevents stale polling from ending a new call
+                                if (!_state.value.callReallyStarted) {
+                                    Log.d(TAG, "⚠️ Call not really started yet - ignoring ENDED status (likely from previous call)")
+                                    shouldContinuePolling = false
+                                    return@launch
+                                }
+                                
                                 connectionTimeoutJob?.cancel()
                                 callStatusPollingJob?.cancel()
                                 
+                                logCallEnded("API Polling - Call Rejected/Declined/Ended")
                                 _state.update {
                                     it.copy(
                                         isCallEnded = true,
@@ -510,6 +567,28 @@ class AudioCallViewModel @Inject constructor(
         Log.d(TAG, "========================================")
         Log.d(TAG, "🔄 resetForNewCall() - Clearing ALL stale state")
         Log.d(TAG, "========================================")
+        Log.d(TAG, "📊 BEFORE RESET:")
+        Log.d(TAG, "   isCallEnded: ${_state.value.isCallEnded}")
+        Log.d(TAG, "   callId: ${_state.value.callId}")
+        Log.d(TAG, "   callReallyStarted: ${_state.value.callReallyStarted}")
+        Log.d(TAG, "   duration: ${_state.value.duration}")
+        Log.d(TAG, "   remoteUserJoined: ${_state.value.remoteUserJoined}")
+        Log.d(TAG, "   callInitializedAt: $callInitializedAt")
+        Log.d(TAG, "   isReceiverRole: $isReceiverRole")
+        Log.d(TAG, "========================================")
+        
+        // ✅ CRITICAL: Cancel all jobs from previous call to prevent them from affecting new call
+        connectionTimeoutJob?.cancel()
+        callStatusPollingJob?.cancel()
+        connectionTimeoutJob = null
+        callStatusPollingJob = null
+        hasShownTimeoutError = false
+        
+        // ✅ CRITICAL: Reset tracking variables that prevent premature ending
+        callInitializedAt = 0  // Reset initialization timestamp
+        isReceiverRole = false  // Reset receiver role flag
+        isEndingCall = false  // Reset ending flag
+        
         _state.update {
             it.copy(
                 isCallEnded = false,  // ✅ CRITICAL: Reset this first!
@@ -526,10 +605,22 @@ class AudioCallViewModel @Inject constructor(
                 giftSent = null,
                 showSwitchToVideoDialog = false,
                 switchToVideoDeclinedMessage = null,
-                shouldNavigateToVideo = false
+                shouldNavigateToVideo = false,
+                callReallyStarted = false  // ✅ CRITICAL: Reset this - will be set to true in initializeAndJoinCall
             )
         }
+        Log.d(TAG, "========================================")
         Log.d(TAG, "✅ State reset complete - ready for new call")
+        Log.d(TAG, "📊 AFTER RESET:")
+        Log.d(TAG, "   isCallEnded: ${_state.value.isCallEnded}")
+        Log.d(TAG, "   callId: ${_state.value.callId}")
+        Log.d(TAG, "   callReallyStarted: ${_state.value.callReallyStarted}")
+        Log.d(TAG, "   duration: ${_state.value.duration}")
+        Log.d(TAG, "   remoteUserJoined: ${_state.value.remoteUserJoined}")
+        Log.d(TAG, "   callInitializedAt: $callInitializedAt")
+        Log.d(TAG, "   isReceiverRole: $isReceiverRole")
+        Log.d(TAG, "   isEndingCall: $isEndingCall")
+        Log.d(TAG, "========================================")
     }
     
     fun setCallId(callId: String) {
@@ -559,9 +650,29 @@ class AudioCallViewModel @Inject constructor(
         Log.d(TAG, "   Is null: ${balanceTime == null}")
         Log.d(TAG, "   Is empty: ${balanceTime?.isEmpty()}")
         
-        val maxDuration = TimeUtils.parseBalanceTime(balanceTime)
+        var maxDuration = TimeUtils.parseBalanceTime(balanceTime)
         
         Log.d(TAG, "   Parsed maxDuration: $maxDuration seconds")
+        
+        // ✅ FIX: If balance time is 0 or missing, use default duration
+        // This prevents calls from ending immediately when balance_time is not provided
+        // Female users (who don't pay) often don't have balance_time set
+        val DEFAULT_CALL_DURATION = 60 * 60 // 1 hour default for receiver/female users
+        
+        if (maxDuration <= 0) {
+            Log.w(TAG, "⚠️ WARNING: Balance time is 0 or invalid!")
+            Log.w(TAG, "   This happens when:")
+            Log.w(TAG, "   1. FCM notification doesn't include balance_time")
+            Log.w(TAG, "   2. Backend doesn't send balance_time for receiver")
+            Log.w(TAG, "   3. Female user (receiver) doesn't have balance")
+            Log.w(TAG, "")
+            Log.w(TAG, "✅ SOLUTION: Using default duration = 1 hour")
+            Log.w(TAG, "   Call will NOT end immediately")
+            Log.w(TAG, "   Timer will NOT be displayed (expected for receiver)")
+            maxDuration = DEFAULT_CALL_DURATION
+        }
+        
+        Log.d(TAG, "   Final maxDuration: $maxDuration seconds")
         Log.d(TAG, "   Formatted time: ${TimeUtils.formatTime(maxDuration)}")
         Log.d(TAG, "   Is low time: ${TimeUtils.isLowTime(maxDuration)}")
         
@@ -578,15 +689,8 @@ class AudioCallViewModel @Inject constructor(
         Log.d(TAG, "   state.maxCallDuration: ${_state.value.maxCallDuration}")
         Log.d(TAG, "   state.remainingTime: ${_state.value.remainingTime}")
         Log.d(TAG, "   state.isLowTime: ${_state.value.isLowTime}")
-        
-        if (maxDuration <= 0) {
-            Log.w(TAG, "⚠️ WARNING: No balance time available - call may end immediately")
-            Log.w(TAG, "⚠️ TIMER WILL NOT BE DISPLAYED (maxCallDuration = 0)")
-        } else {
-            Log.d(TAG, "✅ Balance time set successfully")
-            Log.d(TAG, "✅ Call can last up to ${TimeUtils.formatTime(maxDuration)}")
-            Log.d(TAG, "✅ TIMER SHOULD BE VISIBLE NOW")
-        }
+        Log.d(TAG, "✅ Balance time configured successfully")
+        Log.d(TAG, "✅ Call can last up to ${TimeUtils.formatTime(maxDuration)}")
         Log.d(TAG, "========================================")
     }
     
@@ -677,9 +781,10 @@ class AudioCallViewModel @Inject constructor(
         _state.update { it.copy(
             isCallEnded = false,
             error = null,
-            waitingForReceiver = !isReceiver  // Only caller waits for receiver
+            waitingForReceiver = !isReceiver,  // Only caller waits for receiver
+            callReallyStarted = true  // ✅ CRITICAL: Mark that call has REALLY started (prevents stale isCallEnded from ending it)
         ) }
-        Log.d(TAG, "✅ Reset isCallEnded=false for new call initialization")
+        Log.d(TAG, "✅ Reset isCallEnded=false and set callReallyStarted=true for new call initialization")
         
         // Validate inputs before proceeding
         if (channelName.isEmpty()) {
@@ -850,6 +955,7 @@ class AudioCallViewModel @Inject constructor(
                     Log.i(TAG, "👋 Remote user left: $uid")
                     // When remote user leaves, mark call as ended
                     // The LaunchedEffect in the screen will detect this and navigate to call end screen
+                    logCallEnded("Agora - Remote User Left Channel")
                     _state.update { it.copy(
                         remoteUserJoined = false,
                         isCallEnded = true,

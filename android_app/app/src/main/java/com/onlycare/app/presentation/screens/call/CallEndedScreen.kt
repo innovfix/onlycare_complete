@@ -1,4 +1,4 @@
-﻿package com.onlycare.app.presentation.screens.call
+package com.onlycare.app.presentation.screens.call
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -25,7 +25,8 @@ fun CallEndedScreen(
     callId: String,
     duration: Int,  // in seconds
     coinsSpent: Int,
-    onNavigateToMain: (() -> Unit)? = null
+    onNavigateToMain: (() -> Unit)? = null,
+    onRateUser: ((userId: String, callId: String) -> Unit)? = null
 ) {
     // Get user gender to determine if we should show coins spent
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -170,7 +171,13 @@ fun CallEndedScreen(
         OnlyCarePrimaryButton(
             text = "Rate User",
             onClick = {
-                navController.navigate(Screen.RateUser.createRoute(userId, callId))
+                // ✅ Use callback if provided (for CallActivity -> RatingActivity)
+                // Otherwise fallback to navigation (for backwards compatibility)
+                if (onRateUser != null) {
+                    onRateUser(userId, callId)
+                } else {
+                    navController.navigate(Screen.RateUser.createRoute(userId, callId))
+                }
             }
         )
         

@@ -1,4 +1,4 @@
-﻿package com.onlycare.app.presentation.screens.call
+package com.onlycare.app.presentation.screens.call
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
@@ -80,11 +80,23 @@ fun AudioCallScreen(
     
     // ✅ CRITICAL FIX: Reset ViewModel state FIRST before any other LaunchedEffect checks it
     // This prevents stale isCallEnded=true from previous call triggering immediate ending
-    LaunchedEffect(Unit) {
+    // ✅ Depend on callId to ensure this runs for EVERY new call (handles onNewIntent case)
+    LaunchedEffect(callId) {
         android.util.Log.d("AudioCallScreen", "========================================")
-        android.util.Log.d("AudioCallScreen", "🔄 AudioCallScreen opened - Resetting ViewModel state")
+        android.util.Log.d("AudioCallScreen", "🔄 AudioCallScreen LaunchedEffect TRIGGERED")
         android.util.Log.d("AudioCallScreen", "========================================")
+        android.util.Log.d("AudioCallScreen", "📞 Call ID: $callId")
+        android.util.Log.d("AudioCallScreen", "👤 User ID: $userId")
+        android.util.Log.d("AudioCallScreen", "🎯 Role: $role")
+        android.util.Log.d("AudioCallScreen", "📡 App ID: ${appId.take(10)}...")
+        android.util.Log.d("AudioCallScreen", "🔑 Token: ${token.take(20)}...")
+        android.util.Log.d("AudioCallScreen", "📺 Channel: $channel")
+        android.util.Log.d("AudioCallScreen", "⏱️ Balance Time: $balanceTime")
+        android.util.Log.d("AudioCallScreen", "========================================")
+        android.util.Log.d("AudioCallScreen", "🧹 Resetting ViewModel state for this call...")
         viewModel.resetForNewCall()
+        android.util.Log.d("AudioCallScreen", "✅ ViewModel reset complete")
+        android.util.Log.d("AudioCallScreen", "========================================")
     }
     
     // Track that user is in an active call - block other incoming calls
@@ -245,10 +257,19 @@ fun AudioCallScreen(
             
             // Use explicit role parameter to determine if receiver or caller
             val isReceiver = (role == "receiver")
+            android.util.Log.d("AudioCallScreen", "========================================")
+            android.util.Log.d("AudioCallScreen", "🚀 INITIALIZING CALL")
+            android.util.Log.d("AudioCallScreen", "========================================")
             android.util.Log.d("AudioCallScreen", "✅ All checks passed, joining call as ${if (isReceiver) "RECEIVER" else "CALLER"} (role=$role)...")
             android.util.Log.d("AudioCallScreen", "📍 Using backend credentials (App ID + Token)")
+            android.util.Log.d("AudioCallScreen", "📞 Call ID: $callId")
+            android.util.Log.d("AudioCallScreen", "📺 Channel: $finalChannel")
+            android.util.Log.d("AudioCallScreen", "🔑 Token: ${finalToken.take(20)}...")
+            android.util.Log.d("AudioCallScreen", "========================================")
             // Receiver: join immediately (after accept). Caller: call will defer Agora join until accepted.
             viewModel.initializeAndJoinCall(appId, finalToken, finalChannel, isReceiver)
+            android.util.Log.d("AudioCallScreen", "✅ initializeAndJoinCall() called")
+            android.util.Log.d("AudioCallScreen", "========================================")
         } else {
             android.util.Log.w("AudioCallScreen", "⚠️ Waiting for audio permission...")
         }
@@ -265,8 +286,26 @@ fun AudioCallScreen(
     }
     
     // Handle remote user ending call
-    LaunchedEffect(state.isCallEnded) {
-        if (state.isCallEnded) {
+    // ✅ CRITICAL FIX: Only check isCallEnded AFTER call has REALLY started (prevents stale state from previous call)
+    LaunchedEffect(state.isCallEnded, state.callId, state.callReallyStarted) {
+        android.util.Log.d("AudioCallScreen", "========================================")
+        android.util.Log.d("AudioCallScreen", "🔍 LaunchedEffect(isCallEnded) CHECKING:")
+        android.util.Log.d("AudioCallScreen", "   state.isCallEnded = ${state.isCallEnded}")
+        android.util.Log.d("AudioCallScreen", "   state.callId = ${state.callId}")
+        android.util.Log.d("AudioCallScreen", "   state.callReallyStarted = ${state.callReallyStarted}")
+        android.util.Log.d("AudioCallScreen", "========================================")
+        
+        // ✅ TRIPLE GUARD: Only process if:
+        // 1. Call has ended (isCallEnded = true)
+        // 2. Call ID is set (not null/empty)
+        // 3. Call was REALLY started (not just stale state from previous call)
+        if (state.isCallEnded && !state.callId.isNullOrEmpty() && state.callReallyStarted) {
+            android.util.Log.d("AudioCallScreen", "========================================")
+            android.util.Log.d("AudioCallScreen", "🚨 ALL CONDITIONS MET - ENDING CALL")
+            android.util.Log.d("AudioCallScreen", "Call ID: ${state.callId}")
+            android.util.Log.d("AudioCallScreen", "Duration: ${state.duration}")
+            android.util.Log.d("AudioCallScreen", "========================================")
+            
             // Automatically end call on this side too
             viewModel.endCall(
                 onSuccess = { callId, duration, coinsSpent ->

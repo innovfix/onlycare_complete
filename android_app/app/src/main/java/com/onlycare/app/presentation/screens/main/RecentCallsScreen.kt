@@ -1,4 +1,4 @@
-﻿package com.onlycare.app.presentation.screens.main
+package com.onlycare.app.presentation.screens.main
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background

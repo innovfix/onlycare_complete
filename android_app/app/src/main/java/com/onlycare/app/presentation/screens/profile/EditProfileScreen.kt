@@ -1,4 +1,4 @@
-﻿package com.onlycare.app.presentation.screens.profile
+package com.onlycare.app.presentation.screens.profile
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background

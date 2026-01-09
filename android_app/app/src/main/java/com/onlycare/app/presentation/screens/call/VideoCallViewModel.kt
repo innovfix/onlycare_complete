@@ -366,8 +366,18 @@ class VideoCallViewModel @Inject constructor(
      * @param balanceTime Time string from backend (e.g., "25:00", "1:30:00")
      */
     fun setBalanceTime(balanceTime: String?) {
-        val maxDuration = TimeUtils.parseBalanceTime(balanceTime)
+        var maxDuration = TimeUtils.parseBalanceTime(balanceTime)
         Log.d(TAG, "💰 Balance time set: $balanceTime → $maxDuration seconds")
+        
+        // ✅ FIX: If balance time is 0 or missing, use default duration
+        // This prevents calls from ending immediately when balance_time is not provided
+        val DEFAULT_CALL_DURATION = 60 * 60 // 1 hour default for receiver/female users
+        
+        if (maxDuration <= 0) {
+            Log.w(TAG, "⚠️ WARNING: Balance time is 0 or invalid - using default duration")
+            Log.w(TAG, "   This prevents call from ending immediately")
+            maxDuration = DEFAULT_CALL_DURATION
+        }
         
         _state.update { 
             it.copy(
@@ -377,11 +387,7 @@ class VideoCallViewModel @Inject constructor(
             ) 
         }
         
-        if (maxDuration <= 0) {
-            Log.w(TAG, "⚠️ No balance time available - call may end immediately")
-        } else {
-            Log.d(TAG, "✅ Call can last up to ${TimeUtils.formatTime(maxDuration)}")
-        }
+        Log.d(TAG, "✅ Call can last up to ${TimeUtils.formatTime(maxDuration)}")
     }
     
     fun updateDuration(seconds: Int) {

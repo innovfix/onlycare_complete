@@ -650,7 +650,7 @@ public function getFemales(Request $request)
             'last_seen' => $user->last_seen ? (int)$user->last_seen * 1000 : null,
             'rating' => round($user->rating, 1),
             'total_ratings' => $user->total_ratings ?? 0,
-            'is_verified' => ($user->kyc_status === 'APPROVED'), // Always include verification status
+            'is_verified' => ($user->is_verified == 1 || $user->is_verified === true || $user->kyc_status === 'APPROVED'), // Check both is_verified field and kyc_status
             'audio_call_enabled' => $user->audio_call_enabled ?? false, // Always include for filtering
             'video_call_enabled' => $user->video_call_enabled ?? false, // Always include for filtering
         ];

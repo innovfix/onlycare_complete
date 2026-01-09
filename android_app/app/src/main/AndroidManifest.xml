@@ -120,6 +120,15 @@
             android:turnScreenOn="true"
             android:excludeFromRecents="true" />
         
+        <!-- Rating Activity - Separate activity for rating users after call -->
+        <activity
+            android:name=".presentation.screens.call.RatingActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OnlyCare"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:excludeFromRecents="false" />
+        
         <activity
             android:name=".presentation.MainActivity"
             android:exported="true"

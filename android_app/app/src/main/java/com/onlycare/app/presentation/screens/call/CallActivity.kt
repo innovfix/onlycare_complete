@@ -71,6 +71,14 @@ class CallActivity : ComponentActivity() {
             Log.e(TAG, "❌ Error setting up window flags", e)
         }
         
+        // Extract and setup call
+        extractCallDataAndSetupUI(intent)
+    }
+    
+    /**
+     * Extract call data from intent and setup/refresh UI
+     */
+    private fun extractCallDataAndSetupUI(intent: Intent) {
         // Extract call data from intent
         Log.d(TAG, "📦 Extracting call data from intent...")
         callerId = intent.getStringExtra(EXTRA_CALLER_ID) ?: ""
@@ -138,7 +146,7 @@ class CallActivity : ComponentActivity() {
             }
             Log.d(TAG, "✅ Compose UI setup completed")
             Log.d(TAG, "========================================")
-            Log.d(TAG, "✅ CallActivity.onCreate() - COMPLETED SUCCESSFULLY")
+            Log.d(TAG, "✅ CallActivity setup - COMPLETED SUCCESSFULLY")
             Log.d(TAG, "   Call screen should now be visible!")
             Log.d(TAG, "========================================")
         } catch (e: Exception) {
@@ -301,23 +309,8 @@ private fun CallActivityContent(
             )
         }
         
-        composable(
-            route = "rate_user/{userId}/{callId}",
-            arguments = listOf(
-                navArgument("userId") { type = NavType.StringType },
-                navArgument("callId") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val userId = backStackEntry.arguments?.getString("userId") ?: ""
-            val callId = backStackEntry.arguments?.getString("callId") ?: ""
-            RateUserScreenWrapper(
-                navController = navController,
-                userId = userId,
-                callId = callId,
-                onNavigateToMain = onNavigateToMain,
-                onCallEnded = onCallEnded
-            )
-        }
+        // ✅ REMOVED: rate_user composable - now handled by separate RatingActivity
+        // Rating screen is now a separate activity for better isolation
         
         // Add main route to handle navigation to MainActivity
         // This route is used by CallEndedScreen and RateUserScreen to navigate back to MainActivity
@@ -421,6 +414,8 @@ private fun CallEndedScreenWrapper(
     onNavigateToMain: () -> Unit,
     onCallEnded: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
     // Monitor navigation and intercept Main.route
     val backStackEntry by navController.currentBackStackEntryAsState()
     LaunchedEffect(backStackEntry?.destination?.route) {
@@ -436,32 +431,22 @@ private fun CallEndedScreenWrapper(
         callId = callId,
         duration = duration,
         coinsSpent = coinsSpent,
-        onNavigateToMain = onNavigateToMain
+        onNavigateToMain = onNavigateToMain,
+        onRateUser = { rateUserId, rateCallId ->
+            // ✅ Launch RatingActivity instead of navigating within CallActivity
+            Log.d("CallActivity", "════════════════════════════════════════════════════════════")
+            Log.d("CallActivity", "⭐ Launching RatingActivity")
+            Log.d("CallActivity", "  - User ID: $rateUserId")
+            Log.d("CallActivity", "  - Call ID: $rateCallId")
+            Log.d("CallActivity", "════════════════════════════════════════════════════════════")
+            val ratingIntent = RatingActivity.createIntent(context, rateUserId, rateCallId)
+            context.startActivity(ratingIntent)
+            // Finish CallActivity after launching RatingActivity
+            (context as? ComponentActivity)?.finish()
+        }
     )
 }
 
-@Composable
-private fun RateUserScreenWrapper(
-    navController: NavHostController,
-    userId: String,
-    callId: String,
-    onNavigateToMain: () -> Unit,
-    onCallEnded: () -> Unit
-) {
-    // Monitor navigation and intercept Main.route
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    LaunchedEffect(backStackEntry?.destination?.route) {
-        val route = backStackEntry?.destination?.route
-        if (route == Screen.Main.route) {
-            onNavigateToMain()
-        }
-    }
-    
-    RateUserScreen(
-        navController = navController,
-        userId = userId,
-        callId = callId
-    )
-}
+// ✅ REMOVED: RateUserScreenWrapper - now handled by separate RatingActivity
 
 

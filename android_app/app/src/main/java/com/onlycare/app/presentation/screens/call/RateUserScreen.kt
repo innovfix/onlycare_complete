@@ -1,4 +1,4 @@
-﻿package com.onlycare.app.presentation.screens.call
+package com.onlycare.app.presentation.screens.call
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -35,18 +35,58 @@ fun RateUserScreen(
     callId: String,
     viewModel: RateUserViewModel = hiltViewModel()
 ) {
+    // ✅ IMMEDIATE LOG - This should show up first
+    android.util.Log.e("RateUserScreen", "════════════════════════════════════════════════════════════")
+    android.util.Log.e("RateUserScreen", "RateUserScreen COMPOSABLE CALLED")
+    android.util.Log.e("RateUserScreen", "userId: $userId")
+    android.util.Log.e("RateUserScreen", "callId: $callId")
+    android.util.Log.e("RateUserScreen", "════════════════════════════════════════════════════════════")
+    
     val state by viewModel.state.collectAsState()
     var rating by remember { mutableStateOf(0) }
     var selectedTags by remember { mutableStateOf(setOf<String>()) }
     var additionalComments by remember { mutableStateOf("") }
     var blockThisUser by remember { mutableStateOf(false) }
     
+    // ✅ LOG: Track when screen is entered
+    LaunchedEffect(Unit) {
+        android.util.Log.e("RateUserScreen", "╔════════════════════════════════════════════════════════════")
+        android.util.Log.e("RateUserScreen", "║ 📝 RateUserScreen ENTERED")
+        android.util.Log.e("RateUserScreen", "╚════════════════════════════════════════════════════════════")
+        android.util.Log.e("RateUserScreen", "📞 Call ID: $callId")
+        android.util.Log.e("RateUserScreen", "👤 User ID: $userId")
+        android.util.Log.e("RateUserScreen", "════════════════════════════════════════════════════════════")
+    }
+    
+    // ✅ LOG: Track when screen is disposed
+    DisposableEffect(Unit) {
+        android.util.Log.e("RateUserScreen", "✅ RateUserScreen composition started")
+        onDispose {
+            android.util.Log.e("RateUserScreen", "════════════════════════════════════════════════════════════")
+            android.util.Log.e("RateUserScreen", "🚪 RateUserScreen DISPOSED/LEAVING")
+            android.util.Log.e("RateUserScreen", "════════════════════════════════════════════════════════════")
+        }
+    }
+    
     // ✅ FIX: Clear call state when entering rating screen to prevent conflicts with new incoming calls
     LaunchedEffect(Unit) {
+        android.util.Log.e("RateUserScreen", "🧹 Clearing call state from CallStateManager...")
+        
+        val wasInCall = com.onlycare.app.utils.CallStateManager.isInCall
+        val wasInIncomingScreen = com.onlycare.app.utils.CallStateManager.isInIncomingCallScreen
+        val previousCallId = com.onlycare.app.utils.CallStateManager.currentCallId
+        
+        android.util.Log.e("RateUserScreen", "📊 BEFORE clearing:")
+        android.util.Log.e("RateUserScreen", "   wasInCall: $wasInCall")
+        android.util.Log.e("RateUserScreen", "   wasInIncomingScreen: $wasInIncomingScreen")
+        android.util.Log.e("RateUserScreen", "   previousCallId: $previousCallId")
+        
         com.onlycare.app.utils.CallStateManager.setInCall(false)
         com.onlycare.app.utils.CallStateManager.setInIncomingCallScreen(false)
         com.onlycare.app.utils.CallStateManager.setCurrentCallId(null)
-        android.util.Log.d("RateUserScreen", "✅ Cleared call state - ready for new calls")
+        
+        android.util.Log.e("RateUserScreen", "✅ Call state cleared - ready for new incoming calls")
+        android.util.Log.e("RateUserScreen", "════════════════════════════════════════════════════════════")
     }
     
     // Load user details
@@ -59,6 +99,7 @@ fun RateUserScreen(
     // Handle submit success
     LaunchedEffect(state.submitSuccess) {
         if (state.submitSuccess) {
+            android.util.Log.e("RateUserScreen", "✅ Rating submitted successfully - navigating to home")
             navController.navigate(Screen.Main.route) {
                 popUpTo(Screen.Main.route) { inclusive = true }
             }
@@ -68,6 +109,7 @@ fun RateUserScreen(
     
     // Handle system back button - make it behave like "Skip" button (navigate to home)
     BackHandler {
+        android.util.Log.e("RateUserScreen", "⬅️ Back button pressed - navigating to home (skipping rating)")
         navController.navigate(Screen.Main.route) {
             popUpTo(Screen.Main.route) { inclusive = true }
         }
@@ -110,6 +152,7 @@ fun RateUserScreen(
         // Close button (acts like Skip)
         IconButton(
             onClick = {
+                android.util.Log.e("RateUserScreen", "❌ Close/Skip button clicked - navigating to home")
                 navController.navigate(Screen.Main.route) {
                     popUpTo(Screen.Main.route) { inclusive = true }
                 }
@@ -359,6 +402,12 @@ fun RateUserScreen(
                     OnlyCarePrimaryButton(
                         text = "Submit",
                         onClick = {
+                            android.util.Log.e("RateUserScreen", "════════════════════════════════════════════════════════════")
+                            android.util.Log.e("RateUserScreen", "✅ Submit button clicked")
+                            android.util.Log.e("RateUserScreen", "   Rating: $rating stars")
+                            android.util.Log.e("RateUserScreen", "   Tags: ${selectedTags.joinToString(", ")}")
+                            android.util.Log.e("RateUserScreen", "   Block user: $blockThisUser")
+                            android.util.Log.e("RateUserScreen", "════════════════════════════════════════════════════════════")
                             viewModel.submitRating(
                                 userId = userId,
                                 callId = callId,

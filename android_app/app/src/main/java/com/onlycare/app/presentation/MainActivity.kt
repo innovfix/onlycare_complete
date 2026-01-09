@@ -156,6 +156,29 @@ class MainActivity : FragmentActivity() {
         // Update online status when app starts (if user is logged in)
         updateOnlinePresenceForCurrentSession(appInForeground = true)
         
+        // ✅ CRITICAL: Send FCM token to backend on every app start (if user is logged in)
+        // This ensures male users can receive incoming call notifications from females
+        if (sessionManager.isLoggedIn()) {
+            lifecycleScope.launch {
+                try {
+                    val fcmToken = com.onlycare.app.utils.FCMTokenManager.getFCMToken()
+                    if (fcmToken != null) {
+                        Log.d("MainActivity", "📧 Sending FCM token to backend on app start: ${fcmToken.take(20)}...")
+                        val result = repository.updateFCMToken(fcmToken)
+                        if (result.isSuccess) {
+                            Log.d("MainActivity", "✅ FCM token sent to backend successfully")
+                        } else {
+                            Log.e("MainActivity", "❌ Failed to send FCM token: ${result.exceptionOrNull()?.message}")
+                        }
+                    } else {
+                        Log.w("MainActivity", "⚠️ FCM token not available on app start")
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error sending FCM token on app start", e)
+                }
+            }
+        }
+        
         // ⚡ Connect to WebSocket only for MALE users (females use FCM only)
         // WebSocket provides instant call status updates for male callers
         // Female users receive calls via FCM which is more reliable when app is killed
@@ -420,6 +443,23 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         // User is active - update presence
         updateOnlinePresenceForCurrentSession(appInForeground = true)
+        
+        // ✅ CRITICAL: Re-send FCM token when app resumes (in case it expired or was cleared)
+        if (sessionManager.isLoggedIn()) {
+            lifecycleScope.launch {
+                try {
+                    val fcmToken = com.onlycare.app.utils.FCMTokenManager.getFCMToken()
+                    if (fcmToken != null) {
+                        Log.d("MainActivity", "📧 Re-sending FCM token on app resume: ${fcmToken.take(20)}...")
+                        repository.updateFCMToken(fcmToken)
+                            .onSuccess { Log.d("MainActivity", "✅ FCM token re-sent successfully") }
+                            .onFailure { e -> Log.e("MainActivity", "❌ Failed to re-send FCM token: ${e.message}") }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error re-sending FCM token on resume", e)
+                }
+            }
+        }
         
         // ⚡ Reconnect WebSocket if disconnected (only for male users)
         if (sessionManager.isLoggedIn() && sessionManager.getGender() == Gender.MALE) {
