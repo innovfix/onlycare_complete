@@ -1183,13 +1183,21 @@ class CallController extends Controller
         $minutes = ceil($duration / 60);
         $coinsSpent = $minutes * $call->coin_rate_per_minute;
         
+        // ✅ NEW: Calculate female earnings separately
+        // Female earns: 1 coin/min for audio, 6 coins/min for video
+        $isAudioCall = strtoupper($call->call_type) === 'AUDIO';
+        $femaleEarningRate = $isAudioCall ? 1 : 6; // 1 for audio, 6 for video
+        $coinsEarned = $minutes * $femaleEarningRate;
+        
         // ✅ MINIMUM CALL DURATION: No charge if call duration is less than 10 seconds
         if ($duration < 10) {
             $coinsSpent = 0;
+            $coinsEarned = 0;
             Log::info('⏱️ Call duration less than 10 seconds - No coins charged', [
                 'call_id' => $call->id,
                 'duration' => $duration,
-                'coins_spent' => 0
+                'coins_spent' => 0,
+                'coins_earned' => 0
             ]);
         }
         
@@ -1199,7 +1207,10 @@ class CallController extends Controller
             'client_duration' => $clientDuration,
             'minutes_charged' => $minutes,
             'coins_to_spend' => $coinsSpent,
+            'coins_to_earn' => $coinsEarned,
             'rate_per_minute' => $call->coin_rate_per_minute,
+            'female_earning_rate' => $femaleEarningRate,
+            'call_type' => $call->call_type,
             'minimum_duration_applied' => $duration < 10
         ]);
 
@@ -1210,7 +1221,7 @@ class CallController extends Controller
                 'status' => 'ENDED',
                 'duration' => $duration,
                 'coins_spent' => $coinsSpent,
-                'coins_earned' => $coinsSpent,
+                'coins_earned' => $coinsEarned,  // ✅ NEW: Female earnings (different from male payment)
                 'ended_at' => now()
             ]);
 
@@ -1228,18 +1239,19 @@ class CallController extends Controller
                 'payer_type' => $payer->user_type,
                 'earner_id' => $earner->id,
                 'earner_type' => $earner->user_type,
-                'coins' => $coinsSpent,
+                'coins_spent' => $coinsSpent,
+                'coins_earned' => $coinsEarned,
                 'duration' => $duration
             ]);
 
             // ✅ Only process coins if duration >= 10 seconds
             if ($coinsSpent > 0) {
-                // Deduct coins from payer (MALE)
+                // Deduct coins from payer (MALE) - full amount
                 $payer->decrement('coin_balance', $coinsSpent);
                 
-                // Add coins to earner (FEMALE)
-                $earner->increment('coin_balance', $coinsSpent);
-                $earner->increment('total_earnings', $coinsSpent);
+                // Add coins to earner (FEMALE) - reduced amount (1/min audio, 6/min video)
+                $earner->increment('coin_balance', $coinsEarned);
+                $earner->increment('total_earnings', $coinsEarned);
 
                 // Create transaction records
                 Transaction::create([
@@ -1257,8 +1269,8 @@ class CallController extends Controller
                     'id' => 'TXN_' . time() . rand(1000, 9999),
                     'user_id' => $earner->id,  // ✅ FEMALE user earns
                     'type' => 'CALL_EARNED',
-                    'amount' => $coinsSpent,
-                    'coins' => $coinsSpent,
+                    'amount' => $coinsEarned,  // ✅ NEW: Female earnings amount
+                    'coins' => $coinsEarned,   // ✅ NEW: Female earnings amount
                     'status' => 'SUCCESS',
                     'reference_id' => $call->id,
                     'reference_type' => 'CALL'
@@ -1267,7 +1279,7 @@ class CallController extends Controller
                 Log::info('✅ Coins processed successfully', [
                     'call_id' => $call->id,
                     'coins_deducted' => $coinsSpent,
-                    'coins_earned' => $coinsSpent
+                    'coins_earned' => $coinsEarned
                 ]);
             } else {
                 Log::info('✅ No coins processed - Call duration less than 10 seconds', [
