@@ -185,29 +185,39 @@ class CallConnectingViewModel @Inject constructor(
                     Log.d(TAG, "✅ All user validation checks passed!")
                 }
                 
-                // STEP 2: Check wallet balance
-                val balanceResult = repository.getWalletBalance()
-                balanceResult.onSuccess { balance ->
-                    val requiredCoins = if (callType.lowercase() == "audio") 10 else 60
-                    
-                    if (balance < requiredCoins) {
+                // STEP 2: Check wallet balance (SKIP for FEMALE users)
+                val userGender = sessionManager.getGender()
+                val isFemale = userGender == com.onlycare.app.domain.model.Gender.FEMALE
+                
+                if (isFemale) {
+                    // ✅ FEMALE users can call without coin balance check
+                    Log.d(TAG, "✅ Female user - Skipping coin balance check, allowing call")
+                    initiateCallInternal(receiverId, callType, onSuccess)
+                } else {
+                    // MALE users must have sufficient coins
+                    val balanceResult = repository.getWalletBalance()
+                    balanceResult.onSuccess { balance ->
+                        val requiredCoins = if (callType.lowercase() == "audio") 10 else 60
+                        
+                        if (balance < requiredCoins) {
+                            _state.update {
+                                it.copy(
+                                    isConnecting = false,
+                                    error = "❌ Insufficient Coins\n\nYou need at least $requiredCoins coins for this call.\n\nYour balance: $balance coins\n\nPlease recharge your wallet."
+                                )
+                            }
+                            return@launch
+                        }
+                        
+                        // STEP 3: All checks passed, initiate call
+                        initiateCallInternal(receiverId, callType, onSuccess)
+                    }.onFailure { error ->
                         _state.update {
                             it.copy(
                                 isConnecting = false,
-                                error = "❌ Insufficient Coins\n\nYou need at least $requiredCoins coins for this call.\n\nYour balance: $balance coins\n\nPlease recharge your wallet."
+                                error = "❌ Balance Check Failed\n\n${error.message}\n\nPlease check your internet connection and try again."
                             )
                         }
-                        return@launch
-                    }
-                    
-                    // STEP 3: All checks passed, initiate call
-                    initiateCallInternal(receiverId, callType, onSuccess)
-                }.onFailure { error ->
-                    _state.update {
-                        it.copy(
-                            isConnecting = false,
-                            error = "❌ Balance Check Failed\n\n${error.message}\n\nPlease check your internet connection and try again."
-                        )
                     }
                 }
             } catch (e: Exception) {
