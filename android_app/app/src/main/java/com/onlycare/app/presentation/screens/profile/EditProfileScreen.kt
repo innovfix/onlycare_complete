@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 import com.onlycare.app.domain.model.Gender
 import com.onlycare.app.domain.model.Interest
 import com.onlycare.app.domain.model.Language
@@ -280,7 +283,7 @@ fun EditProfileScreen(
                                                         ),
                                                     contentAlignment = Alignment.Center
                                                 ) {
-                                                    AsyncImage(
+                                                    SubcomposeAsyncImage(
                                                         model = avatar.imageUrl,
                                                         contentDescription = "Avatar",
                                                         contentScale = ContentScale.Crop,
@@ -289,7 +292,41 @@ fun EditProfileScreen(
                                                             .graphicsLayer {
                                                                 this.alpha = alpha
                                                             }
-                                                    )
+                                                    ) {
+                                                        val state = painter.state
+                                                        when (state) {
+                                                            is AsyncImagePainter.State.Loading -> {
+                                                                Box(
+                                                                    modifier = Modifier.fillMaxSize(),
+                                                                    contentAlignment = Alignment.Center
+                                                                ) {
+                                                                    CircularProgressIndicator(
+                                                                        color = Primary,
+                                                                        modifier = Modifier.size(40.dp),
+                                                                        strokeWidth = 3.dp
+                                                                    )
+                                                                }
+                                                            }
+                                                            is AsyncImagePainter.State.Error -> {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .fillMaxSize()
+                                                                        .background(MediumGray),
+                                                                    contentAlignment = Alignment.Center
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.Person,
+                                                                        contentDescription = "Error loading avatar",
+                                                                        tint = TextGray,
+                                                                        modifier = Modifier.size(80.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                            else -> {
+                                                                SubcomposeAsyncImageContent()
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
