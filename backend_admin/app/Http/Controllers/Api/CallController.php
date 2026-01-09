@@ -315,14 +315,29 @@ class CallController extends Controller
         // ============================================
         // 10. CALCULATE BALANCE TIME (Good UX)
         // ============================================
-        // Calculate balance time for the payer (MALE user)
-        $balanceTime = $this->calculateBalanceTime($payer->coin_balance, $requiredCoins);
-        Log::info('💰 Balance time calculated:', [
-            'balance_time' => $balanceTime, 
-            'payer_coins' => $payer->coin_balance, 
-            'rate' => $requiredCoins,
-            'payer_type' => $payer->user_type
-        ]);
+        // ✅ FIX: For FEMALE → MALE calls, set unlimited balance_time (MALE pays, not FEMALE)
+        if ($caller->user_type === 'FEMALE' && $receiver->user_type === 'MALE') {
+            // Female calling male - MALE pays, so set high balance_time for female
+            // Use a very high value (999:59 = ~16.6 hours) so call doesn't auto-end
+            $balanceTime = '999:59';
+            Log::info('✅ FEMALE → MALE call: Setting unlimited balance_time (MALE pays)', [
+                'balance_time' => $balanceTime,
+                'caller_type' => $caller->user_type,
+                'receiver_type' => $receiver->user_type,
+                'male_balance' => $receiver->coin_balance
+            ]);
+        } else {
+            // MALE calling FEMALE - MALE pays, calculate from MALE's balance
+            $balanceTime = $this->calculateBalanceTime($payer->coin_balance, $requiredCoins);
+            Log::info('💰 Balance time calculated:', [
+                'balance_time' => $balanceTime, 
+                'payer_coins' => $payer->coin_balance, 
+                'rate' => $requiredCoins,
+                'payer_type' => $payer->user_type,
+                'caller_type' => $caller->user_type,
+                'receiver_type' => $receiver->user_type
+            ]);
+        }
 
         // ============================================
         // 11. GENERATE AGORA CREDENTIALS (Before creating call)
@@ -511,11 +526,17 @@ class CallController extends Controller
                     $caller = $call->caller;
                     // Get receiver with user_type
                     $receiver = User::select('id', 'user_type', 'coin_balance')->find($call->receiver_id);
-                    // Determine MALE user (payer)
-                    $payer = ($caller && $caller->user_type === 'MALE') ? $caller : $receiver;
-                    if ($payer && isset($payer->coin_balance)) {
-                        $callRate = $call->coin_rate_per_minute ?? ($call->call_type === 'AUDIO' ? 10 : 60);
-                        $balanceTime = $this->calculateBalanceTime($payer->coin_balance, $callRate);
+                    
+                    // ✅ FIX: For FEMALE → MALE calls, set unlimited balance_time (MALE pays)
+                    if ($caller && $caller->user_type === 'FEMALE' && $receiver && $receiver->user_type === 'MALE') {
+                        $balanceTime = '999:59'; // Unlimited for female caller (male pays)
+                    } else {
+                        // Determine MALE user (payer)
+                        $payer = ($caller && $caller->user_type === 'MALE') ? $caller : $receiver;
+                        if ($payer && isset($payer->coin_balance)) {
+                            $callRate = $call->coin_rate_per_minute ?? ($call->call_type === 'AUDIO' ? 10 : 60);
+                            $balanceTime = $this->calculateBalanceTime($payer->coin_balance, $callRate);
+                        }
                     }
                     
                     // DEBUG: Log what we're actually sending
@@ -592,18 +613,24 @@ class CallController extends Controller
         if ($call->status === 'ONGOING' && $call->started_at) {
             $caller = User::find($call->caller_id);
             $receiver = User::find($call->receiver_id);
-            // Determine MALE user (payer)
-            $payer = ($caller && $caller->user_type === 'MALE') ? $caller : $receiver;
             
-            if ($payer) {
-                // Calculate elapsed time and coins spent
-                $elapsedSeconds = now()->diffInSeconds($call->started_at);
-                $elapsedMinutes = $elapsedSeconds / 60;
-                $coinsSpentSoFar = ceil($elapsedMinutes) * $call->coin_rate_per_minute;
+            // ✅ FIX: For FEMALE → MALE calls, set unlimited balance_time (MALE pays)
+            if ($caller && $caller->user_type === 'FEMALE' && $receiver && $receiver->user_type === 'MALE') {
+                $balanceTime = '999:59'; // Unlimited for female caller (male pays)
+            } else {
+                // Determine MALE user (payer)
+                $payer = ($caller && $caller->user_type === 'MALE') ? $caller : $receiver;
                 
-                // Calculate remaining balance from MALE's balance
-                $remainingCoins = max(0, $payer->coin_balance - $coinsSpentSoFar);
-                $balanceTime = $this->calculateBalanceTime($remainingCoins, $call->coin_rate_per_minute);
+                if ($payer) {
+                    // Calculate elapsed time and coins spent
+                    $elapsedSeconds = now()->diffInSeconds($call->started_at);
+                    $elapsedMinutes = $elapsedSeconds / 60;
+                    $coinsSpentSoFar = ceil($elapsedMinutes) * $call->coin_rate_per_minute;
+                    
+                    // Calculate remaining balance from MALE's balance
+                    $remainingCoins = max(0, $payer->coin_balance - $coinsSpentSoFar);
+                    $balanceTime = $this->calculateBalanceTime($remainingCoins, $call->coin_rate_per_minute);
+                }
             }
         }
 
