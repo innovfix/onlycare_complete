@@ -420,10 +420,11 @@ fun MaleHomeScreen(
         // 1. Hide creators who have turned OFF both audio + video availability.
         // 2. Only show creators who have at least one call type enabled (Audio or Video).
         // 3. New registers must remain hidden until they flip a switch (handled by default OFF logic).
+        // 4. Only show VERIFIED females (KYC approved).
         state.femaleUsers
             .filter { user -> 
-                // Ensure at least one call type is enabled
-                user.audioCallEnabled || user.videoCallEnabled
+                // Ensure at least one call type is enabled AND user is verified
+                (user.audioCallEnabled || user.videoCallEnabled) && user.isVerified
             }
             .map { user ->
             val fallback = if (fallbacks.isNotEmpty() && user.profileImage.isBlank()) {

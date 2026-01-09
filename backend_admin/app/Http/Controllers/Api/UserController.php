@@ -650,6 +650,9 @@ public function getFemales(Request $request)
             'last_seen' => $user->last_seen ? (int)$user->last_seen * 1000 : null,
             'rating' => round($user->rating, 1),
             'total_ratings' => $user->total_ratings ?? 0,
+            'is_verified' => ($user->kyc_status === 'APPROVED'), // Always include verification status
+            'audio_call_enabled' => $user->audio_call_enabled ?? false, // Always include for filtering
+            'video_call_enabled' => $user->video_call_enabled ?? false, // Always include for filtering
         ];
 
         // Add online_datetime for MALE users (formatted in IST)
@@ -662,9 +665,6 @@ public function getFemales(Request $request)
             $data['phone'] = $user->phone;
             $data['coin_balance'] = $user->coin_balance;
             $data['total_earnings'] = $user->total_earnings;
-            $data['audio_call_enabled'] = $user->audio_call_enabled;
-            $data['video_call_enabled'] = $user->video_call_enabled;
-            $data['is_verified'] = $user->is_verified ?? false;
             $data['kyc_status'] = $user->kyc_status ?? 'PENDING';
             $data['created_at'] = $user->created_at->toIso8601String();
             

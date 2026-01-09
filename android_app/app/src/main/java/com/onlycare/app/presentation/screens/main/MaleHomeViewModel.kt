@@ -108,6 +108,7 @@ class MaleHomeViewModel @Inject constructor(
                         Log.d("MaleHomeVM", "     - Audio Enabled: ${user.audioCallEnabled}")
                         Log.d("MaleHomeVM", "     - Video Enabled: ${user.videoCallEnabled}")
                         Log.d("MaleHomeVM", "     - Is Online: ${user.isOnline}")
+                        Log.d("MaleHomeVM", "     - Is Verified: ${user.isVerified}")
                     }
 
                     _state.update {
