@@ -51,7 +51,6 @@ import com.onlycare.app.websocket.WebSocketEvent
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -138,9 +137,6 @@ class IncomingCallActivity : ComponentActivity() {
     
     companion object {
         private const val TAG = "IncomingCallActivity"
-        
-        const val RESULT_ACCEPTED = 1
-        const val RESULT_REJECTED = 2
     }
 
     // Fallback polling: if WebSocket/FCM cancellation is missed, poll backend status and stop ringing
@@ -367,14 +363,22 @@ class IncomingCallActivity : ComponentActivity() {
         Log.i(TAG, "CALL_ID: $callId")
         Log.i(TAG, "CALL_TYPE: $callType")
         Log.i(TAG, "BALANCE_TIME: $balanceTime")
-        Log.i(TAG, "")
+        Log.i(TAG, "========================================")
         Log.i(TAG, "🔑 AGORA CREDENTIALS RECEIVED:")
         Log.i(TAG, "========================================")
-        Log.i(TAG, "AGORA_APP_ID: $agoraAppId")
-        Log.i(TAG, "CHANNEL_NAME: $channelId")
-        Log.i(TAG, "AGORA_TOKEN: ${agoraToken ?: "NULL"}")
-        Log.i(TAG, "TOKEN_LENGTH: ${agoraToken?.length ?: 0}")
-        Log.i(TAG, "TOKEN_EMPTY: ${agoraToken.isNullOrEmpty()}")
+        
+        val token = agoraToken // Store in local variable for smart casting
+        if (token.isNullOrEmpty()) {
+            Log.e(TAG, "⚠️ WARNING: AGORA TOKEN IS NULL OR EMPTY!")
+            Log.e(TAG, "This means token was not passed from FCM to Activity")
+        } else {
+            Log.i(TAG, "✅ Token received: ${token.substring(0, minOf(20, token.length))}...")
+            Log.i(TAG, "Full token: $token")
+        }
+        
+        Log.i(TAG, "AGORA_APP_ID = $agoraAppId")
+        Log.i(TAG, "CHANNEL_NAME = $channelId")
+        Log.i(TAG, "TOKEN_LENGTH = ${token?.length ?: 0}")
         Log.i(TAG, "========================================")
     }
     

@@ -243,12 +243,30 @@ class CallConnectingViewModel @Inject constructor(
                     val channel = response.call?.channelName ?: response.channelName ?: ""
                     val balanceTime = response.balanceTime ?: response.call?.balanceTime ?: ""
                     
-                    Log.d("CallConnecting", "📦 API Response:")
-                    Log.d("CallConnecting", "  - Call ID: $callId")
-                    Log.d("CallConnecting", "  - App ID: $appId")
-                    Log.d("CallConnecting", "  - Token: ${token.take(30)}... (length: ${token.length})")
-                    Log.d("CallConnecting", "  - Channel: $channel")
-                    Log.d("CallConnecting", "  - Balance Time: ${if (balanceTime.isEmpty()) "NOT PROVIDED" else balanceTime}")
+                    Log.i(TAG, "========================================")
+                    Log.i(TAG, "📞 MALE USER - DIRECT CALL INITIATED")
+                    Log.i(TAG, "========================================")
+                    Log.i(TAG, "CALL_ID: $callId")
+                    Log.i(TAG, "RECEIVER_ID: $receiverId")
+                    Log.i(TAG, "CALL_TYPE: $callTypeEnum")
+                    Log.i(TAG, "BALANCE_TIME: $balanceTime")
+                    Log.i(TAG, "")
+                    Log.i(TAG, "🔑 AGORA CREDENTIALS FROM API (MALE - DIRECT CALL):")
+                    Log.i(TAG, "========================================")
+                    
+                    if (token.isBlank()) {
+                        Log.e(TAG, "⚠️ WARNING: AGORA TOKEN IS BLANK!")
+                        Log.e(TAG, "This means backend did not generate/send token")
+                    } else {
+                        val tokenPreview = if (token.length >= 20) token.substring(0, 20) else token
+                        Log.i(TAG, "✅ Token received: ${tokenPreview}...")
+                        Log.i(TAG, "Full token: $token")
+                    }
+                    
+                    Log.i(TAG, "AGORA_APP_ID = $appId")
+                    Log.i(TAG, "CHANNEL_NAME = $channel")
+                    Log.i(TAG, "TOKEN_LENGTH = ${token.length}")
+                    Log.i(TAG, "========================================")
                     
                     if (callId != null && appId.isNotEmpty() && channel.isNotEmpty()) {
                         // If user already pressed Cancel while API was in-flight, cancel immediately and DO NOT navigate.

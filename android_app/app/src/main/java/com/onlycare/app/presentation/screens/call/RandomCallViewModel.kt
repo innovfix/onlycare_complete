@@ -281,14 +281,22 @@ class RandomCallViewModel @Inject constructor(
                 Log.i(TAG, "RECEIVER_ID: $receiverId")
                 Log.i(TAG, "CALL_TYPE: $callTypeEnum")
                 Log.i(TAG, "BALANCE_TIME: $balanceTime")
-                Log.i(TAG, "")
+                Log.i(TAG, "========================================")
                 Log.i(TAG, "🔑 AGORA CREDENTIALS FROM API (MALE SIDE):")
                 Log.i(TAG, "========================================")
-                Log.i(TAG, "AGORA_APP_ID: $appId")
-                Log.i(TAG, "CHANNEL_NAME: $channel")
-                Log.i(TAG, "AGORA_TOKEN: $token")
-                Log.i(TAG, "TOKEN_LENGTH: ${token.length}")
-                Log.i(TAG, "TOKEN_EMPTY: ${token.isBlank()}")
+                
+                if (token.isBlank()) {
+                    Log.e(TAG, "⚠️ WARNING: AGORA TOKEN IS BLANK!")
+                    Log.e(TAG, "This means backend did not generate/send token")
+                } else {
+                    val tokenPreview = if (token.length >= 20) token.substring(0, 20) else token
+                    Log.i(TAG, "✅ Token received: ${tokenPreview}...")
+                    Log.i(TAG, "Full token: $token")
+                }
+                
+                Log.i(TAG, "AGORA_APP_ID = $appId")
+                Log.i(TAG, "CHANNEL_NAME = $channel")
+                Log.i(TAG, "TOKEN_LENGTH = ${token.length}")
                 Log.i(TAG, "========================================")
 
                 if (callId.isNullOrBlank() || appId.isBlank() || channel.isBlank()) {

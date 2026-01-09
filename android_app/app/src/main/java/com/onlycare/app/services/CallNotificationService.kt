@@ -198,14 +198,22 @@ class CallNotificationService : FirebaseMessagingService() {
         Log.d(TAG, "  - Caller Photo: ${callerPhoto ?: "NULL"}")
         Log.d(TAG, "  - Call Type: ${callType ?: "NULL"}")
         Log.d(TAG, "  - Balance Time: ${balanceTime ?: "NULL"}")
-        Log.i(TAG, "")
+        Log.i(TAG, "========================================")
         Log.i(TAG, "🔑 AGORA CREDENTIALS FROM FCM:")
         Log.i(TAG, "========================================")
-        Log.i(TAG, "AGORA_APP_ID: ${agoraAppId ?: "NULL"}")
-        Log.i(TAG, "CHANNEL_NAME: ${channelId ?: "NULL"}")
-        Log.i(TAG, "AGORA_TOKEN: ${agoraToken ?: "NULL"}")
-        Log.i(TAG, "TOKEN_LENGTH: ${agoraToken?.length ?: 0}")
-        Log.i(TAG, "TOKEN_EMPTY: ${agoraToken.isNullOrEmpty()}")
+        
+        val token = agoraToken // Store in local variable for smart casting
+        if (token.isNullOrEmpty()) {
+            Log.e(TAG, "⚠️ WARNING: AGORA TOKEN IS NULL OR EMPTY!")
+            Log.e(TAG, "This means FCM notification did not include the token")
+        } else {
+            Log.i(TAG, "✅ Token received: ${token.substring(0, minOf(20, token.length))}...")
+            Log.i(TAG, "Full token: $token")
+        }
+        
+        Log.i(TAG, "AGORA_APP_ID = ${agoraAppId ?: "NULL"}")
+        Log.i(TAG, "CHANNEL_NAME = ${channelId ?: "NULL"}")
+        Log.i(TAG, "TOKEN_LENGTH = ${token?.length ?: 0}")
         Log.i(TAG, "========================================")
         
         // Validate required fields (agoraToken is optional - can be fetched from API later)
