@@ -1183,13 +1183,24 @@ class CallController extends Controller
         $minutes = ceil($duration / 60);
         $coinsSpent = $minutes * $call->coin_rate_per_minute;
         
+        // ✅ MINIMUM CALL DURATION: No charge if call duration is less than 10 seconds
+        if ($duration < 10) {
+            $coinsSpent = 0;
+            Log::info('⏱️ Call duration less than 10 seconds - No coins charged', [
+                'call_id' => $call->id,
+                'duration' => $duration,
+                'coins_spent' => 0
+            ]);
+        }
+        
         Log::info('📞 Processing call end - FINAL BILLING', [
             'call_id' => $call->id,
             'duration_used_for_billing' => $duration,
             'client_duration' => $clientDuration,
             'minutes_charged' => $minutes,
             'coins_to_spend' => $coinsSpent,
-            'rate_per_minute' => $call->coin_rate_per_minute
+            'rate_per_minute' => $call->coin_rate_per_minute,
+            'minimum_duration_applied' => $duration < 10
         ]);
 
         DB::beginTransaction();
@@ -1217,42 +1228,58 @@ class CallController extends Controller
                 'payer_type' => $payer->user_type,
                 'earner_id' => $earner->id,
                 'earner_type' => $earner->user_type,
-                'coins' => $coinsSpent
+                'coins' => $coinsSpent,
+                'duration' => $duration
             ]);
 
-            // Deduct coins from payer (MALE)
-            $payer->decrement('coin_balance', $coinsSpent);
-            
-            // Add coins to earner (FEMALE)
-            $earner->increment('coin_balance', $coinsSpent);
-            $earner->increment('total_earnings', $coinsSpent);
+            // ✅ Only process coins if duration >= 10 seconds
+            if ($coinsSpent > 0) {
+                // Deduct coins from payer (MALE)
+                $payer->decrement('coin_balance', $coinsSpent);
+                
+                // Add coins to earner (FEMALE)
+                $earner->increment('coin_balance', $coinsSpent);
+                $earner->increment('total_earnings', $coinsSpent);
 
-            // Set both users as not busy
+                // Create transaction records
+                Transaction::create([
+                    'id' => 'TXN_' . time() . rand(1000, 9999),
+                    'user_id' => $payer->id,  // ✅ MALE user pays
+                    'type' => 'CALL_SPENT',
+                    'amount' => $coinsSpent,
+                    'coins' => $coinsSpent,
+                    'status' => 'SUCCESS',
+                    'reference_id' => $call->id,
+                    'reference_type' => 'CALL'
+                ]);
+
+                Transaction::create([
+                    'id' => 'TXN_' . time() . rand(1000, 9999),
+                    'user_id' => $earner->id,  // ✅ FEMALE user earns
+                    'type' => 'CALL_EARNED',
+                    'amount' => $coinsSpent,
+                    'coins' => $coinsSpent,
+                    'status' => 'SUCCESS',
+                    'reference_id' => $call->id,
+                    'reference_type' => 'CALL'
+                ]);
+                
+                Log::info('✅ Coins processed successfully', [
+                    'call_id' => $call->id,
+                    'coins_deducted' => $coinsSpent,
+                    'coins_earned' => $coinsSpent
+                ]);
+            } else {
+                Log::info('✅ No coins processed - Call duration less than 10 seconds', [
+                    'call_id' => $call->id,
+                    'duration' => $duration,
+                    'coins_spent' => 0
+                ]);
+            }
+
+            // Set both users as not busy (regardless of duration)
             User::whereIn('id', [$call->caller_id, $call->receiver_id])
                 ->update(['is_busy' => false]);
-
-            // Create transaction records
-            Transaction::create([
-                'id' => 'TXN_' . time() . rand(1000, 9999),
-                'user_id' => $payer->id,  // ✅ MALE user pays
-                'type' => 'CALL_SPENT',
-                'amount' => $coinsSpent,
-                'coins' => $coinsSpent,
-                'status' => 'SUCCESS',
-                'reference_id' => $call->id,
-                'reference_type' => 'CALL'
-            ]);
-
-            Transaction::create([
-                'id' => 'TXN_' . time() . rand(1000, 9999),
-                'user_id' => $earner->id,  // ✅ FEMALE user earns
-                'type' => 'CALL_EARNED',
-                'amount' => $coinsSpent,
-                'coins' => $coinsSpent,
-                'status' => 'SUCCESS',
-                'reference_id' => $call->id,
-                'reference_type' => 'CALL'
-            ]);
 
             DB::commit();
 
