@@ -1246,35 +1246,63 @@ class CallController extends Controller
 
             // ✅ Only process coins if duration >= 10 seconds
             if ($coinsSpent > 0) {
-                // Deduct coins from payer (MALE) - full amount
-                $payer->decrement('coin_balance', $coinsSpent);
+                // ✅ PREVENT DUPLICATE TRANSACTIONS: Check if transactions already exist
+                $existingSpentTxn = Transaction::where('reference_id', $call->id)
+                    ->where('user_id', $payer->id)
+                    ->where('type', 'CALL_SPENT')
+                    ->first();
                 
-                // Add coins to earner (FEMALE) - reduced amount (1/min audio, 6/min video)
-                $earner->increment('coin_balance', $coinsEarned);
-                $earner->increment('total_earnings', $coinsEarned);
+                $existingEarnedTxn = Transaction::where('reference_id', $call->id)
+                    ->where('user_id', $earner->id)
+                    ->where('type', 'CALL_EARNED')
+                    ->first();
+                
+                if ($existingSpentTxn || $existingEarnedTxn) {
+                    Log::warning('⚠️ Duplicate transaction detected - skipping balance update and transaction creation', [
+                        'call_id' => $call->id,
+                        'existing_spent_txn' => $existingSpentTxn ? $existingSpentTxn->id : null,
+                        'existing_earned_txn' => $existingEarnedTxn ? $existingEarnedTxn->id : null
+                    ]);
+                    // Don't create duplicate transactions or update balances
+                } else {
+                    // Deduct coins from payer (MALE) - full amount
+                    $payer->decrement('coin_balance', $coinsSpent);
+                    
+                    // Add coins to earner (FEMALE) - reduced amount (1/min audio, 6/min video)
+                    $earner->increment('coin_balance', $coinsEarned);
+                    $earner->increment('total_earnings', $coinsEarned);
 
-                // Create transaction records
-                Transaction::create([
-                    'id' => 'TXN_' . time() . rand(1000, 9999),
-                    'user_id' => $payer->id,  // ✅ MALE user pays
-                    'type' => 'CALL_SPENT',
-                    'amount' => $coinsSpent,
-                    'coins' => $coinsSpent,
-                    'status' => 'SUCCESS',
-                    'reference_id' => $call->id,
-                    'reference_type' => 'CALL'
-                ]);
+                    // Create transaction records (using firstOrCreate to prevent duplicates)
+                    Transaction::firstOrCreate(
+                        [
+                            'reference_id' => $call->id,
+                            'user_id' => $payer->id,
+                            'type' => 'CALL_SPENT'
+                        ],
+                        [
+                            'id' => 'TXN_' . time() . rand(1000, 9999),
+                            'amount' => $coinsSpent,
+                            'coins' => $coinsSpent,
+                            'status' => 'SUCCESS',
+                            'reference_type' => 'CALL'
+                        ]
+                    );
 
-                Transaction::create([
-                    'id' => 'TXN_' . time() . rand(1000, 9999),
-                    'user_id' => $earner->id,  // ✅ FEMALE user earns
-                    'type' => 'CALL_EARNED',
-                    'amount' => $coinsEarned,  // ✅ NEW: Female earnings amount
-                    'coins' => $coinsEarned,   // ✅ NEW: Female earnings amount
-                    'status' => 'SUCCESS',
-                    'reference_id' => $call->id,
-                    'reference_type' => 'CALL'
-                ]);
+                    Transaction::firstOrCreate(
+                        [
+                            'reference_id' => $call->id,
+                            'user_id' => $earner->id,
+                            'type' => 'CALL_EARNED'
+                        ],
+                        [
+                            'id' => 'TXN_' . time() . rand(1000, 9999),
+                            'amount' => $coinsEarned,  // ✅ NEW: Female earnings amount
+                            'coins' => $coinsEarned,   // ✅ NEW: Female earnings amount
+                            'status' => 'SUCCESS',
+                            'reference_type' => 'CALL'
+                        ]
+                    );
+                }
                 
                 Log::info('✅ Coins processed successfully', [
                     'call_id' => $call->id,
