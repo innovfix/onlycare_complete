@@ -5,6 +5,9 @@ namespace App\Services;
 /**
  * Agora RTC Token Builder
  * Based on Agora's official token generation algorithm
+ * 
+ * This is a custom implementation that generates Agora RTC tokens
+ * without requiring external packages.
  */
 class AgoraTokenBuilder
 {
@@ -65,6 +68,7 @@ class AgoraTokenBuilder
 
     /**
      * Build token with default role (Publisher) and 24-hour expiration
+     * This is the method used by CallController
      */
     public static function buildTokenWithDefault(
         string $appId,

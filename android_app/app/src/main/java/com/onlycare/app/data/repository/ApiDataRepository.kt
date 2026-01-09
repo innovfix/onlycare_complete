@@ -1370,6 +1370,29 @@ class ApiDataRepository @Inject constructor(
                 val body = response.body()!!
                 if (body.success && body.data != null) {
                     Log.d(TAG, "Incoming calls fetched: ${body.data.size} calls")
+                    
+                    // Log Agora credentials for each incoming call
+                    body.data.forEachIndexed { index, call ->
+                        Log.d(TAG, "")
+                        Log.d(TAG, "========================================")
+                        Log.d(TAG, "📞 INCOMING CALL #${index + 1} FROM API")
+                        Log.d(TAG, "========================================")
+                        Log.d(TAG, "Call ID: ${call.id}")
+                        Log.d(TAG, "Caller: ${call.callerName} (${call.callerId})")
+                        Log.d(TAG, "Call Type: ${call.callType}")
+                        Log.d(TAG, "Status: ${call.status}")
+                        Log.d(TAG, "Balance Time: ${call.balanceTime ?: "NULL"}")
+                        Log.d(TAG, "")
+                        Log.d(TAG, "🔑 AGORA CREDENTIALS FROM API:")
+                        Log.d(TAG, "========================================")
+                        Log.d(TAG, "App ID: ${call.agoraAppId ?: "NULL"}")
+                        Log.d(TAG, "Channel Name: ${call.channelName ?: "NULL"}")
+                        Log.d(TAG, "Token: ${call.agoraToken ?: "NULL"}")
+                        Log.d(TAG, "Token Length: ${call.agoraToken?.length ?: 0}")
+                        Log.d(TAG, "Token Empty: ${call.agoraToken.isNullOrEmpty()}")
+                        Log.d(TAG, "========================================")
+                    }
+                    
                     Result.success(body.data)
                 } else {
                     Log.e(TAG, "No incoming calls data in response")

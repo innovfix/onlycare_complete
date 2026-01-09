@@ -216,12 +216,26 @@ class IncomingCallActivity : ComponentActivity() {
         // Observe WebSocket events for call cancellation
         observeCallCancellation()
         
-        // ✅ FIX: Ensure WebSocket is connected to receive real-time cancellation
-        if (!webSocketManager.isConnected()) {
-            Log.d(TAG, "🔌 WebSocket not connected - connecting now for real-time cancellation")
+        // ✅ FIX: Only connect WebSocket for MALE users (females use FCM only)
+        val userGender = sessionManager.getGender()
+        val isConnected = webSocketManager.isConnected()
+        
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "[websocket_check] IncomingCallActivity - Checking WebSocket")
+        Log.d(TAG, "User Gender: $userGender")
+        Log.d(TAG, "Is Connected: $isConnected")
+        Log.d(TAG, "User ID: ${sessionManager.getUserId()}")
+        Log.d(TAG, "========================================")
+        
+        if (userGender == Gender.FEMALE) {
+            Log.d(TAG, "[websocket_check] ℹ️ Female user - WebSocket NOT needed (using FCM only)")
+            Log.d(TAG, "   Female users receive call cancellations via FCM broadcast")
+            // Do NOT connect WebSocket for female users
+        } else if (!isConnected && userGender == Gender.MALE) {
+            Log.d(TAG, "[websocket_check] Male user - connecting WebSocket for real-time cancellation")
             webSocketManager.connect()
-        } else {
-            Log.d(TAG, "✅ WebSocket already connected")
+        } else if (isConnected) {
+            Log.d(TAG, "[websocket_check] ✅ WebSocket already connected")
         }
         
         // Register broadcast receiver for FCM call cancellation (backup)
@@ -345,8 +359,23 @@ class IncomingCallActivity : ComponentActivity() {
         callType = intent.getStringExtra(IncomingCallService.EXTRA_CALL_TYPE)
         balanceTime = intent.getStringExtra(IncomingCallService.EXTRA_BALANCE_TIME)
         
-        Log.d(TAG, "Caller info - ID: $callerId, Name: $callerName, Channel: $channelId")
-        Log.d(TAG, "Call details - Call ID: $callId, Type: $callType, App ID: $agoraAppId, Token: ${if (agoraToken.isNullOrEmpty()) "EMPTY" else "Present"}, Balance Time: $balanceTime")
+        Log.i(TAG, "========================================")
+        Log.i(TAG, "📞 INCOMING CALL DATA RECEIVED")
+        Log.i(TAG, "========================================")
+        Log.i(TAG, "CALLER_ID: $callerId")
+        Log.i(TAG, "CALLER_NAME: $callerName")
+        Log.i(TAG, "CALL_ID: $callId")
+        Log.i(TAG, "CALL_TYPE: $callType")
+        Log.i(TAG, "BALANCE_TIME: $balanceTime")
+        Log.i(TAG, "")
+        Log.i(TAG, "🔑 AGORA CREDENTIALS RECEIVED:")
+        Log.i(TAG, "========================================")
+        Log.i(TAG, "AGORA_APP_ID: $agoraAppId")
+        Log.i(TAG, "CHANNEL_NAME: $channelId")
+        Log.i(TAG, "AGORA_TOKEN: ${agoraToken ?: "NULL"}")
+        Log.i(TAG, "TOKEN_LENGTH: ${agoraToken?.length ?: 0}")
+        Log.i(TAG, "TOKEN_EMPTY: ${agoraToken.isNullOrEmpty()}")
+        Log.i(TAG, "========================================")
     }
     
     /**
@@ -759,22 +788,33 @@ class IncomingCallActivity : ComponentActivity() {
         CallStateManager.markAsProcessed(currentCallId)
         Log.d(TAG, "✅ Call marked as processed in CallStateManager")
         
-        // Check WebSocket connection status
+        // Check user gender - only male users need WebSocket for instant notification
+        val userGender = sessionManager.getGender()
         val isWebSocketConnected = webSocketManager.isConnected()
-        Log.d(TAG, "WebSocket connected: $isWebSocketConnected")
         
-        if (isWebSocketConnected) {
-            Log.d(TAG, "📤 Sending acceptance via WebSocket (INSTANT notification to caller)")
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "[websocket_check] Checking WebSocket before accepting")
+        Log.d(TAG, "Call ID: $currentCallId")
+        Log.d(TAG, "User Gender: $userGender")
+        Log.d(TAG, "WebSocket connected: $isWebSocketConnected")
+        Log.d(TAG, "========================================")
+        
+        // Only send via WebSocket if user is MALE and WebSocket is connected
+        if (userGender == Gender.MALE && isWebSocketConnected) {
+            Log.d(TAG, "[websocket_check] 📤 Male user - Sending acceptance via WebSocket (INSTANT notification)")
             try {
                 webSocketManager.acceptCall(currentCallId)
-                Log.d(TAG, "✅ WebSocket acceptance sent successfully")
-                Log.d(TAG, "⚡ Caller will be notified in <100ms!")
+                Log.d(TAG, "[websocket_check] ✅ WebSocket acceptance sent successfully")
+                Log.d(TAG, "[websocket_check] ⚡ Caller will be notified in <100ms!")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ WebSocket acceptance failed", e)
+                Log.e(TAG, "[websocket_check] ❌ WebSocket acceptance failed", e)
             }
+        } else if (userGender == Gender.FEMALE) {
+            Log.d(TAG, "[websocket_check] ℹ️ Female user - Skipping WebSocket (using REST API + FCM only)")
+            Log.d(TAG, "   Backend will notify caller via FCM automatically")
         } else {
-            Log.w(TAG, "⚠️ WebSocket NOT connected")
-            Log.w(TAG, "   Caller will be notified via API polling (2-4 seconds delay)")
+            Log.w(TAG, "[websocket_check] ⚠️ Male user but WebSocket NOT connected")
+            Log.w(TAG, "   Caller will be notified via REST API + FCM (2-4 seconds delay)")
         }
         
         // Call backend REST API (CRITICAL: This sets receiver_joined_at timestamp!)
@@ -802,7 +842,8 @@ class IncomingCallActivity : ComponentActivity() {
         Log.d(TAG, "========================================")
         Log.d(TAG, "✅ ACCEPTANCE COMPLETE")
         Log.d(TAG, "   - CallStateManager: Marked as processed")
-        Log.d(TAG, "   - WebSocket: ${if (isWebSocketConnected) "Sent ✅" else "Skipped (not connected) ⚠️"}")
+        Log.d(TAG, "   - User Gender: $userGender")
+        Log.d(TAG, "   - WebSocket: ${if (userGender == Gender.MALE && isWebSocketConnected) "Sent ✅" else if (userGender == Gender.FEMALE) "Skipped (female user - not needed)" else "Skipped (not connected) ⚠️"}")
         Log.d(TAG, "   - REST API: Sent in background (CRITICAL for duration!)")
         Log.d(TAG, "========================================")
     }

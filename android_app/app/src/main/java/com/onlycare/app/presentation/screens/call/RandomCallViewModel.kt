@@ -274,6 +274,23 @@ class RandomCallViewModel @Inject constructor(
                 val channel = initResp?.call?.channelName ?: initResp?.channelName ?: ""
                 val balanceTime = initResp?.balanceTime ?: initResp?.call?.balanceTime ?: ""
 
+                Log.i(TAG, "========================================")
+                Log.i(TAG, "📞 MALE USER - CALL INITIATED")
+                Log.i(TAG, "========================================")
+                Log.i(TAG, "CALL_ID: $callId")
+                Log.i(TAG, "RECEIVER_ID: $receiverId")
+                Log.i(TAG, "CALL_TYPE: $callTypeEnum")
+                Log.i(TAG, "BALANCE_TIME: $balanceTime")
+                Log.i(TAG, "")
+                Log.i(TAG, "🔑 AGORA CREDENTIALS FROM API (MALE SIDE):")
+                Log.i(TAG, "========================================")
+                Log.i(TAG, "AGORA_APP_ID: $appId")
+                Log.i(TAG, "CHANNEL_NAME: $channel")
+                Log.i(TAG, "AGORA_TOKEN: $token")
+                Log.i(TAG, "TOKEN_LENGTH: ${token.length}")
+                Log.i(TAG, "TOKEN_EMPTY: ${token.isBlank()}")
+                Log.i(TAG, "========================================")
+
                 if (callId.isNullOrBlank() || appId.isBlank() || channel.isBlank()) {
                     Log.w(TAG, "Skip receiverId=$receiverId (initiateCall missing credentials)")
                     _state.update { it.copy(isRinging = false) }

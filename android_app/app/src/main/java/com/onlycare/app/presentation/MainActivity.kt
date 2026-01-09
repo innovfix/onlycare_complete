@@ -575,40 +575,54 @@ class MainActivity : FragmentActivity() {
      * - Call cancellation notifications
      */
     private fun connectWebSocket() {
+        Log.d("MainActivity", "========================================")
+        Log.d("MainActivity", "[websocket_check] connectWebSocket() called")
+        Log.d("MainActivity", "Is logged in: ${sessionManager.isLoggedIn()}")
+        Log.d("MainActivity", "Gender: ${sessionManager.getGender()}")
+        Log.d("MainActivity", "User ID: ${sessionManager.getUserId()}")
+        Log.d("MainActivity", "========================================")
+        
         // Only connect if user is logged in
         if (!sessionManager.isLoggedIn()) {
-            Log.w("MainActivity", "⚠️ User not logged in, skipping WebSocket connection")
+            Log.w("MainActivity", "[websocket_check] ⚠️ User not logged in, skipping WebSocket connection")
             return
         }
         
         // ✅ Only connect for MALE users (females use FCM only)
         if (sessionManager.getGender() != Gender.MALE) {
-            Log.d("MainActivity", "ℹ️ Female user - skipping WebSocket (using FCM only)")
+            Log.d("MainActivity", "[websocket_check] ℹ️ Female user - skipping WebSocket (using FCM only)")
             return
         }
         
         if (webSocketManager.isConnected()) {
-            Log.d("MainActivity", "✅ WebSocket already connected")
+            Log.d("MainActivity", "[websocket_check] ✅ WebSocket already connected")
             return
         }
         
         lifecycleScope.launch {
             try {
-                Log.d("MainActivity", "⚡ Attempting WebSocket connection (Male user)...")
+                Log.d("MainActivity", "========================================")
+                Log.d("MainActivity", "[websocket_check] ⚡ Attempting WebSocket connection (Male user)")
                 Log.d("MainActivity", "  - User ID: ${sessionManager.getUserId()}")
                 Log.d("MainActivity", "  - Has Token: ${!sessionManager.getAuthToken().isNullOrBlank()}")
+                Log.d("MainActivity", "========================================")
                 
                 webSocketManager.connect()
                 
                 // Wait a bit and check connection status
-                kotlinx.coroutines.delay(2000)
-                if (webSocketManager.isConnected()) {
-                    Log.d("MainActivity", "✅ WebSocket connected successfully!")
+                kotlinx.coroutines.delay(3000)
+                val isConnected = webSocketManager.isConnected()
+                Log.d("MainActivity", "[websocket_check] Connection check after 3 seconds:")
+                Log.d("MainActivity", "  Connected: $isConnected")
+                
+                if (isConnected) {
+                    Log.d("MainActivity", "[websocket_check] ✅ WebSocket connected successfully!")
                 } else {
-                    Log.w("MainActivity", "⚠️ WebSocket connection attempt finished but not connected")
+                    Log.w("MainActivity", "[websocket_check] ⚠️ WebSocket connection attempt finished but NOT connected")
+                    Log.w("MainActivity", "  Check logs above for connection errors")
                 }
             } catch (e: Exception) {
-                Log.e("MainActivity", "❌ WebSocket connection error: ${e.message}", e)
+                Log.e("MainActivity", "[websocket_check] ❌ WebSocket connection error: ${e.message}", e)
             }
         }
     }

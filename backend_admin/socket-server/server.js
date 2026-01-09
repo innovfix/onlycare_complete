@@ -40,19 +40,42 @@ const activeCalls = new Map();
  */
 async function verifyUserToken(token) {
     try {
-        const response = await axios.get(`${process.env.LARAVEL_API_URL}/users/me`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
-            }
-        });
+        // Try both endpoints - Laravel API might use /api/v1/users/me
+        const endpoints = [
+            `${process.env.LARAVEL_API_URL}/api/v1/users/me`,
+            `${process.env.LARAVEL_API_URL}/users/me`
+        ];
         
-        if (response.data.success && response.data.data) {
-            return response.data.data; // Returns user object
+        for (const endpoint of endpoints) {
+            try {
+                console.log(`[websocket_check] Verifying token with: ${endpoint}`);
+                const response = await axios.get(endpoint, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json'
+                    },
+                    timeout: 5000
+                });
+                
+                if (response.data.success && response.data.data) {
+                    console.log(`[websocket_check] ✅ Token verified successfully via ${endpoint}`);
+                    return response.data.data; // Returns user object
+                }
+            } catch (endpointError) {
+                console.log(`[websocket_check] ⚠️ Endpoint ${endpoint} failed: ${endpointError.message}`);
+                // Try next endpoint
+                continue;
+            }
         }
+        
+        console.error('[websocket_check] ❌ Token verification failed: All endpoints failed');
         return null;
     } catch (error) {
-        console.error('Token verification failed:', error.message);
+        console.error('[websocket_check] ❌ Token verification exception:', error.message);
+        if (error.response) {
+            console.error('[websocket_check]   Status:', error.response.status);
+            console.error('[websocket_check]   Data:', error.response.data);
+        }
         return null;
     }
 }
@@ -79,17 +102,37 @@ async function notifyLaravel(endpoint, data) {
 
 io.use(async (socket, next) => {
     try {
+        console.log('========================================');
+        console.log('[websocket_check] New connection attempt');
+        console.log('========================================');
+        
         const token = socket.handshake.auth.token;
         const userId = socket.handshake.auth.userId;
         
+        console.log('[websocket_check] Auth data received:');
+        console.log('  Token: ' + (token ? `${token.substring(0, 20)}...` : 'MISSING'));
+        console.log('  User ID: ' + (userId || 'MISSING'));
+        
         if (!token || !userId) {
+            console.log('[websocket_check] ❌ Authentication required - missing token or userId');
             return next(new Error('Authentication required'));
         }
         
         // Verify token with Laravel
+        console.log('[websocket_check] Verifying token with Laravel...');
         const user = await verifyUserToken(token);
         
-        if (!user || user.id !== userId) {
+        if (!user) {
+            console.log('[websocket_check] ❌ Token verification failed - user is null');
+            return next(new Error('Invalid token'));
+        }
+        
+        console.log('[websocket_check] Token verified - User:', user.id, user.name);
+        
+        if (user.id !== userId) {
+            console.log('[websocket_check] ❌ User ID mismatch:');
+            console.log('  Expected:', userId);
+            console.log('  Got:', user.id);
             return next(new Error('Invalid token'));
         }
         
@@ -98,8 +141,13 @@ io.use(async (socket, next) => {
         socket.userName = user.name;
         socket.userGender = user.gender;
         
+        console.log('[websocket_check] ✅ Authentication successful');
+        console.log('========================================');
+        
         next();
     } catch (error) {
+        console.error('[websocket_check] ❌ Authentication exception:', error.message);
+        console.error('  Stack:', error.stack);
         next(new Error('Authentication failed'));
     }
 });
@@ -253,15 +301,29 @@ io.on('connection', (socket) => {
     // =====================================
     socket.on('call:accept', (data) => {
         try {
+            console.log('========================================');
+            console.log('[websocket_check] Received call:accept event');
+            console.log('========================================');
+            console.log('Socket user ID:', socket.userId);
+            console.log('Raw data:', JSON.stringify(data, null, 2));
+            
             const { callId } = data;
+            console.log('Call ID:', callId);
+            console.log('Active calls count:', activeCalls.size);
+            console.log('Active call IDs:', Array.from(activeCalls.keys()));
+            
             const call = activeCalls.get(callId);
             
             if (!call) {
-                console.log(`❌ Call ${callId} not found`);
+                console.log(`❌ [websocket_check] Call ${callId} not found in activeCalls`);
+                console.log('   This might be normal if call was accepted via REST API');
+                console.log('========================================');
                 return;
             }
             
-            console.log(`✅ Call accepted: ${callId}`);
+            console.log(`✅ [websocket_check] Call found in activeCalls: ${callId}`);
+            console.log('   Caller ID:', call.callerId);
+            console.log('   Receiver ID:', call.receiverId);
             
             // Update call status
             call.status = 'accepted';
@@ -270,17 +332,32 @@ io.on('connection', (socket) => {
             
             // Notify caller INSTANTLY
             const callerSocketId = connectedUsers.get(call.callerId);
+            console.log('   Caller socket ID:', callerSocketId || 'NOT FOUND');
+            console.log('   Total connected users:', connectedUsers.size);
+            
             if (callerSocketId) {
-                io.to(callerSocketId).emit('call:accepted', {
+                const eventData = {
                     callId,
                     timestamp: Date.now()
-                });
+                };
                 
-                console.log(`✅ Caller ${call.callerId} notified: call accepted`);
+                io.to(callerSocketId).emit('call:accepted', eventData);
+                
+                console.log(`✅ [websocket_check] Emitted call:accepted to caller`);
+                console.log('   Caller ID:', call.callerId);
+                console.log('   Socket ID:', callerSocketId);
+                console.log('   Event data:', JSON.stringify(eventData, null, 2));
+                console.log('========================================');
+            } else {
+                console.log(`⚠️ [websocket_check] Caller ${call.callerId} NOT connected`);
+                console.log('   Available user IDs:', Array.from(connectedUsers.keys()));
+                console.log('   FCM will handle notification');
+                console.log('========================================');
             }
             
         } catch (error) {
-            console.error('Error in call:accept:', error);
+            console.error('❌ [websocket_check] Error in call:accept:', error);
+            console.error('   Stack:', error.stack);
         }
     });
     
@@ -737,6 +814,64 @@ app.post('/api/emit/call-cancelled', async (req, res) => {
         }
     } catch (error) {
         console.error('❌ Error emitting call:cancelled:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Emit call:accepted event via HTTP (called by Laravel when female accepts)
+app.post('/api/emit/call-accepted', async (req, res) => {
+    try {
+        const { callerId, callId, receiverId } = req.body;
+        const secret = req.headers['x-internal-secret'];
+        
+        console.log('========================================');
+        console.log('[websocket_check] Laravel requested call:accepted notification');
+        console.log('========================================');
+        console.log('Caller ID:', callerId);
+        console.log('Call ID:', callId);
+        console.log('Receiver ID:', receiverId);
+        console.log('Secret provided:', secret ? 'YES' : 'NO');
+        console.log('Total connected users:', connectedUsers.size);
+        console.log('Connected user IDs:', Array.from(connectedUsers.keys()));
+        
+        // Verify internal secret
+        if (secret !== process.env.LARAVEL_API_SECRET) {
+            console.log('❌ [websocket_check] Unauthorized - Secret mismatch');
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        // Get caller's socket ID (male user who needs to be notified)
+        const callerSocketId = connectedUsers.get(callerId);
+        
+        console.log('Caller socket ID:', callerSocketId || 'NOT FOUND');
+        
+        if (callerSocketId) {
+            const eventData = {
+                callId,
+                receiverId,
+                timestamp: Date.now()
+            };
+            
+            io.to(callerSocketId).emit('call:accepted', eventData);
+            
+            console.log('✅ [websocket_check] Emitted call:accepted to caller');
+            console.log('   Event data:', JSON.stringify(eventData, null, 2));
+            console.log('   Socket ID:', callerSocketId);
+            console.log('========================================');
+            
+            res.json({ success: true, emitted: true });
+        } else {
+            console.log('⚠️ [websocket_check] Caller NOT connected to WebSocket');
+            console.log('   Caller ID:', callerId);
+            console.log('   Available user IDs:', Array.from(connectedUsers.keys()));
+            console.log('   FCM will handle notification instead');
+            console.log('========================================');
+            
+            res.json({ success: true, emitted: false, reason: 'Caller not connected' });
+        }
+    } catch (error) {
+        console.error('❌ [websocket_check] Error emitting call:accepted:', error);
+        console.error('   Stack:', error.stack);
         res.status(500).json({ error: error.message });
     }
 });

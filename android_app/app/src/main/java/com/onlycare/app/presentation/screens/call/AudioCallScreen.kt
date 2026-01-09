@@ -78,6 +78,15 @@ fun AudioCallScreen(
         }
     }
     
+    // ✅ CRITICAL FIX: Reset ViewModel state FIRST before any other LaunchedEffect checks it
+    // This prevents stale isCallEnded=true from previous call triggering immediate ending
+    LaunchedEffect(Unit) {
+        android.util.Log.d("AudioCallScreen", "========================================")
+        android.util.Log.d("AudioCallScreen", "🔄 AudioCallScreen opened - Resetting ViewModel state")
+        android.util.Log.d("AudioCallScreen", "========================================")
+        viewModel.resetForNewCall()
+    }
+    
     // Track that user is in an active call - block other incoming calls
     DisposableEffect(Unit) {
         com.onlycare.app.utils.CallStateManager.setInCall(true)

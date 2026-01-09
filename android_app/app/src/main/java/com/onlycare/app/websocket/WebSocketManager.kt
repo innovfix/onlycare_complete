@@ -49,27 +49,43 @@ class WebSocketManager @Inject constructor(
      * Connect to WebSocket server
      */
     fun connect() {
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "[websocket_check] connect() called")
+        Log.d(TAG, "Current socket connected: ${socket?.connected() == true}")
+        Log.d(TAG, "Is connecting: $isConnecting")
+        Log.d(TAG, "========================================")
+        
         if (socket?.connected() == true) {
-            Log.d(TAG, "Already connected to WebSocket")
+            Log.d(TAG, "[websocket_check] Already connected to WebSocket")
             return
         }
         if (isConnecting) {
-            Log.d(TAG, "Already connecting to WebSocket - skipping duplicate connect()")
+            Log.d(TAG, "[websocket_check] Already connecting to WebSocket - skipping duplicate connect()")
             return
         }
         
         val token = sessionManager.getAuthToken()
         val userId = sessionManager.getUserId()
         
+        Log.d(TAG, "[websocket_check] Checking credentials:")
+        Log.d(TAG, "  User ID: ${userId ?: "NULL"}")
+        Log.d(TAG, "  Has Token: ${!token.isNullOrBlank()}")
+        
         if (token.isNullOrBlank() || userId.isNullOrBlank()) {
-            Log.e(TAG, "Cannot connect: Missing auth token or user ID")
+            Log.e(TAG, "[websocket_check] ❌ Cannot connect: Missing auth token or user ID")
+            Log.e(TAG, "  Token: ${if (token.isNullOrBlank()) "MISSING" else "EXISTS"}")
+            Log.e(TAG, "  User ID: ${if (userId.isNullOrBlank()) "MISSING" else "EXISTS"}")
             _connectionState.value = ConnectionState.Error("Missing authentication")
             return
         }
         
         try {
-            Log.d(TAG, "Connecting to WebSocket server: $SERVER_URL")
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "[websocket_check] 🔌 Starting WebSocket connection")
+            Log.d(TAG, "Server URL: $SERVER_URL")
             Log.d(TAG, "User ID: $userId")
+            Log.d(TAG, "Token length: ${token.length}")
+            Log.d(TAG, "========================================")
             _connectionState.value = ConnectionState.Connecting
             isConnecting = true
             
@@ -108,7 +124,16 @@ class WebSocketManager @Inject constructor(
             socket?.connect()
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error connecting to WebSocket", e)
+            Log.e(TAG, "========================================")
+            Log.e(TAG, "[websocket_check] ❌ EXCEPTION during WebSocket connection")
+            Log.e(TAG, "========================================")
+            Log.e(TAG, "Exception: ${e.javaClass.simpleName}")
+            Log.e(TAG, "Message: ${e.message}")
+            Log.e(TAG, "User ID: ${sessionManager.getUserId()}")
+            Log.e(TAG, "Server URL: $SERVER_URL")
+            Log.e(TAG, "Stack trace:")
+            e.printStackTrace()
+            Log.e(TAG, "========================================")
             _connectionState.value = ConnectionState.Error(e.message ?: "Connection failed")
             isConnecting = false
         }
@@ -124,21 +149,44 @@ class WebSocketManager @Inject constructor(
             // =====================================
             
             on(Socket.EVENT_CONNECT) {
-                Log.d(TAG, "✅ Connected to WebSocket server")
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "[websocket_check] ✅ CONNECTED to WebSocket server")
+                Log.d(TAG, "User ID: ${sessionManager.getUserId()}")
+                Log.d(TAG, "Socket ID: ${socket?.id()}")
+                Log.d(TAG, "========================================")
                 _connectionState.value = ConnectionState.Connected
                 isConnecting = false
                 Log.d(TAG, "✅ WebSocket transport connected (websocket/polling fallback enabled)")
             }
             
-            on(Socket.EVENT_DISCONNECT) {
-                Log.d(TAG, "❌ Disconnected from WebSocket server")
+            on(Socket.EVENT_DISCONNECT) { args ->
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "[websocket_check] ❌ DISCONNECTED from WebSocket server")
+                Log.d(TAG, "Reason: ${args.getOrNull(0) ?: "Unknown"}")
+                Log.d(TAG, "User ID: ${sessionManager.getUserId()}")
+                Log.d(TAG, "========================================")
                 _connectionState.value = ConnectionState.Disconnected
                 isConnecting = false
             }
             
             on(Socket.EVENT_CONNECT_ERROR) { args ->
+                Log.e(TAG, "========================================")
+                Log.e(TAG, "[websocket_check] ❌ CONNECTION ERROR")
+                Log.e(TAG, "========================================")
                 val error = args.getOrNull(0)
-                Log.e(TAG, "Connection error: $error args=${args.joinToString()}")
+                Log.e(TAG, "Error object: $error")
+                Log.e(TAG, "Error type: ${error?.javaClass?.simpleName}")
+                Log.e(TAG, "Error message: ${if (error is Exception) error.message else error?.toString()}")
+                Log.e(TAG, "Args count: ${args.size}")
+                Log.e(TAG, "Args: ${args.joinToString()}")
+                Log.e(TAG, "User ID: ${sessionManager.getUserId()}")
+                Log.e(TAG, "Server URL: $SERVER_URL")
+                Log.e(TAG, "Socket path: /socket.io/")
+                if (error is Exception) {
+                    Log.e(TAG, "Exception stack trace:")
+                    error.printStackTrace()
+                }
+                Log.e(TAG, "========================================")
                 _connectionState.value = ConnectionState.Error(error?.toString() ?: "Connection error")
                 isConnecting = false
             }
@@ -305,18 +353,41 @@ class WebSocketManager @Inject constructor(
     
     private fun handleCallAccepted(data: JSONObject?) {
         try {
-            if (data == null) return
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "[websocket_check] 📥 RECEIVED call:accepted event")
+            Log.d(TAG, "Raw data: ${data?.toString() ?: "NULL"}")
+            Log.d(TAG, "User ID: ${sessionManager.getUserId()}")
+            Log.d(TAG, "Socket connected: ${socket?.connected() == true}")
+            Log.d(TAG, "========================================")
+            
+            if (data == null) {
+                Log.e(TAG, "[websocket_check] ❌ call:accepted data is NULL!")
+                return
+            }
+            
+            val callId = data.getString("callId")
+            val timestamp = data.getLong("timestamp")
+            val receiverId = data.optString("receiverId", null)
+            
+            Log.d(TAG, "[websocket_check] Parsed call:accepted event:")
+            Log.d(TAG, "   Call ID: $callId")
+            Log.d(TAG, "   Receiver ID: $receiverId")
+            Log.d(TAG, "   Timestamp: $timestamp")
             
             val event = WebSocketEvent.CallAccepted(
-                callId = data.getString("callId"),
-                timestamp = data.getLong("timestamp")
+                callId = callId,
+                timestamp = timestamp
             )
             
-            Log.d(TAG, "✅ Call accepted: ${event.callId}")
+            Log.d(TAG, "[websocket_check] ✅ Emitting CallAccepted event to listeners")
             _callEvents.tryEmit(event)
+            Log.d(TAG, "[websocket_check] ✅ CallAccepted event emitted successfully")
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing call accepted", e)
+            Log.e(TAG, "[websocket_check] ❌ Error parsing call:accepted", e)
+            Log.e(TAG, "   Exception: ${e.message}")
+            Log.e(TAG, "   Stack trace:")
+            e.printStackTrace()
         }
     }
     
@@ -593,8 +664,17 @@ class WebSocketManager @Inject constructor(
      * Accept a call
      */
     fun acceptCall(callId: String) {
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "[websocket_check] 📤 acceptCall() called")
+        Log.d(TAG, "Call ID: $callId")
+        Log.d(TAG, "WebSocket connected: ${socket?.connected() == true}")
+        Log.d(TAG, "Socket ID: ${socket?.id()}")
+        Log.d(TAG, "User ID: ${sessionManager.getUserId()}")
+        Log.d(TAG, "========================================")
+        
         if (socket?.connected() != true) {
-            Log.w(TAG, "WebSocket not connected, cannot accept call via WebSocket")
+            Log.w(TAG, "[websocket_check] ⚠️ WebSocket NOT connected - cannot send call:accept")
+            Log.w(TAG, "   Call acceptance will be handled via REST API only")
             return
         }
         
@@ -603,11 +683,17 @@ class WebSocketManager @Inject constructor(
                 put("callId", callId)
             }
             
-            Log.d(TAG, "📤 Emitting call:accept for callId: $callId")
+            Log.d(TAG, "[websocket_check] 📤 Emitting call:accept event")
+            Log.d(TAG, "   Call ID: $callId")
+            Log.d(TAG, "   Data: ${data.toString()}")
             socket?.emit("call:accept", data)
+            Log.d(TAG, "[websocket_check] ✅ call:accept event emitted successfully")
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error emitting call:accept", e)
+            Log.e(TAG, "[websocket_check] ❌ Error emitting call:accept", e)
+            Log.e(TAG, "   Exception: ${e.message}")
+            Log.e(TAG, "   Stack trace:")
+            e.printStackTrace()
         }
     }
     
@@ -804,6 +890,20 @@ class WebSocketManager @Inject constructor(
     /**
      * Check if connected
      */
-    fun isConnected(): Boolean = socket?.connected() == true
+    fun isConnected(): Boolean {
+        val connected = socket?.connected() == true
+        val userId = sessionManager.getUserId()
+        
+        // Only log if not connected (to reduce spam)
+        if (!connected) {
+            Log.d(TAG, "[websocket_check] isConnected() = FALSE")
+            Log.d(TAG, "   User ID: ${userId ?: "NULL"}")
+            Log.d(TAG, "   Socket: ${if (socket == null) "NULL" else "EXISTS"}")
+            Log.d(TAG, "   Socket ID: ${socket?.id() ?: "NULL"}")
+            Log.d(TAG, "   Connection State: ${_connectionState.value}")
+        }
+        
+        return connected
+    }
 }
 

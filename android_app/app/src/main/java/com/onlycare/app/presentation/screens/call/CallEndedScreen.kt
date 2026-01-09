@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +37,14 @@ fun CallEndedScreen(
     }
     val userGender = remember { sessionManager.getGender() }
     val isMaleUser = remember { userGender == com.onlycare.app.domain.model.Gender.MALE }
+    
+    // ✅ FIX: Clear call state when entering call ended screen to prevent conflicts with new incoming calls
+    LaunchedEffect(Unit) {
+        com.onlycare.app.utils.CallStateManager.setInCall(false)
+        com.onlycare.app.utils.CallStateManager.setInIncomingCallScreen(false)
+        com.onlycare.app.utils.CallStateManager.setCurrentCallId(null)
+        android.util.Log.d("CallEndedScreen", "✅ Cleared call state - ready for new calls")
+    }
     
     // Handle system back button - make it behave like "Back to Home" button
     BackHandler {

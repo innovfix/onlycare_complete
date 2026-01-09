@@ -68,6 +68,10 @@ class AudioCallViewModel @Inject constructor(
     
     private var callStatusPollingJob: kotlinx.coroutines.Job? = null
     private var isEndingCall = false  // Prevent double-calling endCall()
+    
+    // ✅ FIX: Track when call was initialized to prevent premature ending
+    private var callInitializedAt: Long = 0
+    private var isReceiverRole: Boolean = false  // Track if we're receiver
 
     // Caller-side gating: don't start Agora/mic until receiver accepts
     private var pendingAppId: String? = null
@@ -137,15 +141,21 @@ class AudioCallViewModel @Inject constructor(
                     }
                     
                     is WebSocketEvent.CallAccepted -> {
-                        Log.d(TAG, "⚡ INSTANT acceptance received via WebSocket: Call ID ${event.callId}")
+                        Log.d(TAG, "========================================")
+                        Log.d(TAG, "[websocket_check] ⚡ RECEIVED call:accepted via WebSocket")
+                        Log.d(TAG, "Call ID from event: ${event.callId}")
+                        Log.d(TAG, "Current call ID in state: ${_state.value.callId}")
+                        Log.d(TAG, "Timestamp: ${event.timestamp}")
+                        Log.d(TAG, "========================================")
                         
                         // Only handle if it's our call
                         if (event.callId == _state.value.callId) {
-                            Log.d(TAG, "✅ Receiver accepted our call! 🎉")
+                            Log.d(TAG, "[websocket_check] ✅ Receiver accepted our call! 🎉")
                             Log.d(TAG, "   Remote user will join Agora channel soon...")
                             
                             // Stop polling - WebSocket notification is faster
                             callStatusPollingJob?.cancel()
+                            Log.d(TAG, "[websocket_check] ✅ Stopped call status polling")
                             
                             // Get receiver's name for personalized message
                             val receiverName = _state.value.user?.name ?: "User"
@@ -491,8 +501,47 @@ class AudioCallViewModel @Inject constructor(
         }
     }
     
+    /**
+     * ✅ CRITICAL FIX: Reset ViewModel state for a new call
+     * This MUST be called BEFORE any LaunchedEffect checks the state
+     * Otherwise, stale isCallEnded=true from previous call will trigger immediate ending
+     */
+    fun resetForNewCall() {
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "🔄 resetForNewCall() - Clearing ALL stale state")
+        Log.d(TAG, "========================================")
+        _state.update {
+            it.copy(
+                isCallEnded = false,  // ✅ CRITICAL: Reset this first!
+                error = null,
+                duration = 0,
+                coinsSpent = 0,
+                remoteUserJoined = false,
+                isConnected = false,
+                waitingForReceiver = false,
+                wasEverConnected = false,
+                callAccepted = false,
+                acceptanceMessage = null,
+                giftReceived = null,
+                giftSent = null,
+                showSwitchToVideoDialog = false,
+                switchToVideoDeclinedMessage = null,
+                shouldNavigateToVideo = false
+            )
+        }
+        Log.d(TAG, "✅ State reset complete - ready for new call")
+    }
+    
     fun setCallId(callId: String) {
-        _state.update { it.copy(callId = callId) }
+        // ✅ FIX: Reset isCallEnded when starting a new call to prevent stale state
+        // If previous call ended with isCallEnded=true, and new call is accepted,
+        // the LaunchedEffect will see the stale isCallEnded=true and immediately end the new call
+        _state.update { it.copy(
+            callId = callId,
+            isCallEnded = false,  // Reset to false for new call
+            error = null  // Clear any previous errors
+        ) }
+        Log.d(TAG, "✅ setCallId: $callId, reset isCallEnded=false")
     }
     
     fun setError(error: String) {
@@ -617,6 +666,20 @@ class AudioCallViewModel @Inject constructor(
         Log.d(TAG, "📝 Channel: $channelName")
         Log.d(TAG, "🔑 Token: ${token.take(20)}...")
         Log.d(TAG, "👤 Role: ${if (isReceiver) "RECEIVER (caller already in channel)" else "CALLER (waiting for receiver)"}")
+        
+        // ✅ FIX: Track initialization time and role to prevent premature ending
+        callInitializedAt = System.currentTimeMillis()
+        isReceiverRole = isReceiver
+        Log.d(TAG, "✅ Call initialized at ${callInitializedAt}, isReceiver: $isReceiver")
+        
+        // ✅ FIX: Reset isCallEnded state when initializing a new call
+        // This prevents stale isCallEnded=true from previous call triggering immediate end
+        _state.update { it.copy(
+            isCallEnded = false,
+            error = null,
+            waitingForReceiver = !isReceiver  // Only caller waits for receiver
+        ) }
+        Log.d(TAG, "✅ Reset isCallEnded=false for new call initialization")
         
         // Validate inputs before proceeding
         if (channelName.isEmpty()) {
@@ -909,7 +972,20 @@ class AudioCallViewModel @Inject constructor(
         
         // ✅ FIX: If call was never connected AND has no duration, don't show "Call Ended" screen
         // If duration > 0, always show call ended screen (call actually happened)
+        // BUT: Don't auto-end if receiver just accepted (give it time to connect)
+        val timeSinceInitialization = System.currentTimeMillis() - callInitializedAt
+        val isRecentlyInitialized = timeSinceInitialization < 5000 // Less than 5 seconds
+        
         if (!wasEverConnected && duration == 0) {
+            // ✅ FIX: If receiver just accepted call, don't auto-end immediately
+            // Give it time to connect (caller might already be in channel)
+            if (isReceiverRole && isRecentlyInitialized) {
+                Log.d(TAG, "⏳ Receiver just accepted call (${timeSinceInitialization}ms ago) - not auto-ending, giving time to connect")
+                // Reset ending flag so it can be called again if needed
+                isEndingCall = false
+                return
+            }
+            
             Log.d(TAG, "🚫 Call never connected - navigating back to home instead of showing Call Ended screen")
             
             // If caller ends call before receiver accepts, send cancellation notification

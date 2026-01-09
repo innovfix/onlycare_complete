@@ -41,6 +41,14 @@ fun RateUserScreen(
     var additionalComments by remember { mutableStateOf("") }
     var blockThisUser by remember { mutableStateOf(false) }
     
+    // ✅ FIX: Clear call state when entering rating screen to prevent conflicts with new incoming calls
+    LaunchedEffect(Unit) {
+        com.onlycare.app.utils.CallStateManager.setInCall(false)
+        com.onlycare.app.utils.CallStateManager.setInIncomingCallScreen(false)
+        com.onlycare.app.utils.CallStateManager.setCurrentCallId(null)
+        android.util.Log.d("RateUserScreen", "✅ Cleared call state - ready for new calls")
+    }
+    
     // Load user details
     LaunchedEffect(userId) {
         if (userId.isNotEmpty()) {

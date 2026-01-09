@@ -8,7 +8,7 @@ use App\Models\User;
 use App\Models\BlockedUser;
 use App\Models\Transaction;
 use App\Models\AppSetting;
-use App\Services\AgoraTokenBuilder;
+use Yasser\Agora\RtcTokenBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -330,10 +330,19 @@ class CallController extends Controller
         // Generate unique call ID first
         $callId = 'CALL_' . time() . rand(1000, 9999);
         
-        Log::info('🔑 Generating Agora token for call:', ['call_id' => $callId]);
+        Log::info('[agora_token] 🔑 Generating Agora token for call:', ['call_id' => $callId]);
         $agoraToken = $this->generateAgoraToken($callId);
         $channelName = 'call_' . $callId;
-        Log::info('✅ Agora credentials generated:', ['channel' => $channelName, 'token_length' => strlen($agoraToken)]);
+        
+        // ✅ COMPLETE LOGGING: Log all credentials after generation
+        Log::info('[agora_token] ✅ Agora credentials generated for call', [
+            'call_id' => $callId,
+            'app_id' => env('AGORA_APP_ID'),
+            'channel_name' => $channelName,
+            'uid' => 0,
+            'token' => $agoraToken, // Complete token
+            'token_length' => strlen($agoraToken)
+        ]);
 
         // ============================================
         // 12. CREATE CALL RECORD WITH AGORA CREDENTIALS
@@ -380,7 +389,27 @@ class CallController extends Controller
         // ============================================
         // 14. RETURN SUCCESS RESPONSE
         // ============================================
-        Log::info('🎉 Returning success response to app');
+        Log::info('🎉 Returning success response to app (MALE USER)');
+        
+        // ✅ LOG WHAT'S BEING SENT TO MALE USER
+        Log::info('========================================');
+        Log::info('📤 SENDING TO MALE USER (API RESPONSE)');
+        Log::info('========================================');
+        Log::info('Call ID: ' . $call->id);
+        Log::info('Caller: ' . $caller->name . ' (' . $caller->id . ')');
+        Log::info('Receiver: ' . $receiver->name . ' (' . $receiver->id . ')');
+        Log::info('Call Type: ' . $request->call_type);
+        Log::info('');
+        Log::info('🔑 AGORA CREDENTIALS SENT TO MALE:');
+        Log::info('========================================');
+        Log::info('AGORA_APP_ID: ' . config('services.agora.app_id'));
+        Log::info('CHANNEL_NAME: ' . $channelName);
+        Log::info('AGORA_TOKEN: ' . $agoraToken);
+        Log::info('TOKEN_LENGTH: ' . strlen($agoraToken));
+        Log::info('AGORA_UID: 0');
+        Log::info('BALANCE_TIME: ' . $balanceTime);
+        Log::info('========================================');
+        
         return response()->json([
             'success' => true,
             'message' => 'Call initiated successfully',
@@ -438,11 +467,37 @@ class CallController extends Controller
                     $agoraToken = $call->agora_token;
                     $channelName = $call->channel_name;
                     
+                    // ✅ COMPLETE LOGGING: Log credentials used in getIncomingCalls
+                    Log::info('[agora_token] Using Agora credentials from database for incoming call', [
+                        'call_id' => $call->id,
+                        'app_id' => env('AGORA_APP_ID'),
+                        'channel_name' => $channelName,
+                        'uid' => 0,
+                        'token' => $agoraToken, // Complete token
+                        'token_length' => strlen($agoraToken ?? ''),
+                        'token_from_db' => true
+                    ]);
+                    
                     // Fallback: If credentials are missing (old calls), regenerate them
                     if (empty($agoraToken) || empty($channelName)) {
-                        Log::warning('⚠️ Missing Agora credentials for call ' . $call->id . ', regenerating...');
+                        Log::warning('[agora_token] ⚠️ Missing Agora credentials in getIncomingCalls, regenerating...', [
+                            'call_id' => $call->id,
+                            'token_empty' => empty($agoraToken),
+                            'channel_empty' => empty($channelName)
+                        ]);
                         $agoraToken = $this->generateAgoraToken($call->id);
                         $channelName = 'call_' . $call->id;
+                        
+                        // ✅ COMPLETE LOGGING: Log regenerated credentials
+                        Log::info('[agora_token] ✅ Regenerated Agora credentials for getIncomingCalls', [
+                            'call_id' => $call->id,
+                            'app_id' => env('AGORA_APP_ID'),
+                            'channel_name' => $channelName,
+                            'uid' => 0,
+                            'token' => $agoraToken, // Complete token
+                            'token_length' => strlen($agoraToken),
+                            'token_regenerated' => true
+                        ]);
                         
                         // Save the regenerated credentials
                         $call->update([
@@ -604,6 +659,23 @@ class CallController extends Controller
             ], 403);
         }
 
+        // Get users for logging
+        $receiver = $request->user();
+        $caller = User::find($call->caller_id);
+        
+        // ✅ CALL_ACCEPTED LOG: Female side (receiver accepts)
+        Log::info('[call_accepted] Female accepted call', [
+            'call_id' => $callId,
+            'caller_id' => $call->caller_id,
+            'caller_name' => $caller->name ?? 'Unknown',
+            'caller_type' => $caller->user_type ?? 'Unknown',
+            'receiver_id' => $receiver->id,
+            'receiver_name' => $receiver->name,
+            'receiver_type' => $receiver->user_type,
+            'call_type' => $call->call_type,
+            'timestamp' => now()->toIso8601String()
+        ]);
+
         DB::beginTransaction();
         
         try {
@@ -625,12 +697,75 @@ class CallController extends Controller
             $agoraToken = $call->agora_token;
             $channelName = $call->channel_name;
             
+            // ✅ COMPLETE LOGGING: Log credentials used in acceptCall
+            Log::info('[agora_token] Using Agora credentials from database for acceptCall', [
+                'call_id' => $callId,
+                'app_id' => env('AGORA_APP_ID'),
+                'channel_name' => $channelName,
+                'uid' => 0,
+                'token' => $agoraToken, // Complete token
+                'token_length' => strlen($agoraToken ?? ''),
+                'token_from_db' => true
+            ]);
+            
             // Fallback: If credentials are missing, regenerate them
             if (empty($agoraToken) || empty($channelName)) {
-                Log::warning('⚠️ Missing Agora credentials in acceptCall for ' . $call->id . ', regenerating...');
+                Log::warning('[agora_token] ⚠️ Missing Agora credentials in acceptCall, regenerating...', [
+                    'call_id' => $callId,
+                    'token_empty' => empty($agoraToken),
+                    'channel_empty' => empty($channelName)
+                ]);
                 $agoraToken = $this->generateAgoraToken($call->id);
                 $channelName = 'call_' . $call->id;
+                
+                // ✅ COMPLETE LOGGING: Log regenerated credentials
+                Log::info('[agora_token] ✅ Regenerated Agora credentials for acceptCall', [
+                    'call_id' => $callId,
+                    'app_id' => env('AGORA_APP_ID'),
+                    'channel_name' => $channelName,
+                    'uid' => 0,
+                    'token' => $agoraToken, // Complete token
+                    'token_length' => strlen($agoraToken),
+                    'token_regenerated' => true
+                ]);
             }
+
+            // ✅ Notify caller (MALE) that call was accepted via FCM + WebSocket
+            Log::info('[call_accepted] Female accepted call - Notifying male', [
+                'call_id' => $callId,
+                'caller_id' => $caller->id,
+                'caller_name' => $caller->name ?? 'Unknown',
+                'receiver_id' => $receiver->id,
+                'receiver_name' => $receiver->name,
+                'caller_has_fcm_token' => !empty($caller->fcm_token),
+                'timestamp' => now()->toIso8601String()
+            ]);
+            Log::channel('daily')->info('[call_accepted] Female accepted call - Notifying male', [
+                'call_id' => $callId,
+                'caller_id' => $caller->id,
+                'receiver_id' => $receiver->id,
+                'caller_has_fcm_token' => !empty($caller->fcm_token)
+            ]);
+            
+            // Send FCM notification
+            $this->notifyCallAccepted($caller, $receiver, $callId, $call->call_type);
+            
+            // Send WebSocket notification (instant, if male is connected)
+            $this->emitCallAcceptedWebSocket($caller->id, $callId, $receiver->id);
+
+            // ✅ CALL_ACCEPTED LOG: Male side (caller notified)
+            Log::info('[call_accepted] Male notified - Call accepted by female', [
+                'call_id' => $callId,
+                'caller_id' => $caller->id,
+                'caller_name' => $caller->name ?? 'Unknown',
+                'caller_type' => $caller->user_type ?? 'Unknown',
+                'receiver_id' => $receiver->id,
+                'receiver_name' => $receiver->name,
+                'receiver_type' => $receiver->user_type,
+                'call_type' => $call->call_type,
+                'caller_has_fcm_token' => !empty($caller->fcm_token),
+                'timestamp' => now()->toIso8601String()
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -1505,8 +1640,26 @@ class CallController extends Controller
      */
     private function sendPushNotification($receiver, $caller, $callId, $callType)
     {
+        // ✅ FCM_CHECK LOG: Track when male calls female
+        Log::channel('daily')->info('[fcm_check] Male called female - Checking FCM notification', [
+            'caller_id' => $caller->id,
+            'caller_name' => $caller->name,
+            'caller_type' => $caller->user_type,
+            'receiver_id' => $receiver->id,
+            'receiver_name' => $receiver->name,
+            'receiver_type' => $receiver->user_type,
+            'call_id' => $callId,
+            'call_type' => $callType,
+            'receiver_has_fcm_token' => !empty($receiver->fcm_token)
+        ]);
+        
         if (!$receiver->fcm_token) {
             Log::info('⚠️ No FCM token for user: ' . $receiver->id);
+            Log::channel('daily')->warning('[fcm_check] FCM notification FAILED - No FCM token', [
+                'receiver_id' => $receiver->id,
+                'receiver_name' => $receiver->name,
+                'call_id' => $callId
+            ]);
             return;
         }
 
@@ -1516,6 +1669,11 @@ class CallController extends Controller
             Log::warning('⚠️ Invalid FCM token format (too short) for user: ' . $receiver->id, [
                 'token_length' => $tokenLength,
                 'token_preview' => substr($receiver->fcm_token, 0, 20) . '...'
+            ]);
+            Log::channel('daily')->warning('[fcm_check] FCM notification FAILED - Invalid token format', [
+                'receiver_id' => $receiver->id,
+                'token_length' => $tokenLength,
+                'call_id' => $callId
             ]);
             // Clear invalid token so app can update it on next login
             $receiver->update(['fcm_token' => null]);
@@ -1544,9 +1702,22 @@ class CallController extends Controller
                 $balanceTime = $this->calculateBalanceTime($payer->coin_balance, $callRate);
             }
 
+            // Check if Firebase credentials file exists
+            $credentialsPath = config('firebase.credentials');
+            if (!file_exists($credentialsPath)) {
+                Log::channel('daily')->error('[fcm_check] FCM notification FAILED - Firebase credentials file missing', [
+                    'receiver_id' => $receiver->id,
+                    'call_id' => $callId,
+                    'credentials_path' => $credentialsPath,
+                    'error' => 'Firebase credentials file not found. Please upload firebase-credentials.json to storage/app/'
+                ]);
+                Log::error('❌ Firebase credentials file not found: ' . $credentialsPath);
+                return;
+            }
+
             // Initialize Firebase
             $firebase = (new \Kreait\Firebase\Factory)
-                ->withServiceAccount(config('firebase.credentials'));
+                ->withServiceAccount($credentialsPath);
             $messaging = $firebase->createMessaging();
 
             // Prepare FCM data payload (REQUIRED for background/killed app state)
@@ -1564,6 +1735,24 @@ class CallController extends Controller
                 'balanceTime' => (string) $balanceTime,  // Caller's balance time for countdown timer
                 'timestamp' => (string) (now()->timestamp * 1000),  // Milliseconds for Android
             ];
+
+            // ✅ LOG WHAT'S BEING SENT TO FEMALE VIA FCM
+            Log::info('========================================');
+            Log::info('📤 SENDING TO FEMALE USER (FCM NOTIFICATION)');
+            Log::info('========================================');
+            Log::info('Caller: ' . $caller->name . ' (' . $caller->id . ')');
+            Log::info('Receiver: ' . $receiver->name . ' (' . $receiver->id . ')');
+            Log::info('Call ID: ' . $callId);
+            Log::info('Call Type: ' . $callType);
+            Log::info('');
+            Log::info('🔑 AGORA CREDENTIALS SENT TO FEMALE (VIA FCM):');
+            Log::info('========================================');
+            Log::info('AGORA_APP_ID: ' . config('services.agora.app_id'));
+            Log::info('CHANNEL_NAME: ' . $call->channel_name);
+            Log::info('AGORA_TOKEN: ' . ($call->agora_token ?? 'NULL'));
+            Log::info('TOKEN_LENGTH: ' . strlen($call->agora_token ?? ''));
+            Log::info('BALANCE_TIME: ' . $balanceTime);
+            Log::info('========================================');
 
             // Create FCM message with high priority for Android
             // ✅ CRITICAL: NO notification field - only data payload!
@@ -1584,6 +1773,18 @@ class CallController extends Controller
                 'call_id' => $callId,
                 'balance_time' => $balanceTime,
                 'result' => $result
+            ]);
+            
+            // ✅ FCM_CHECK LOG: Successfully sent FCM to female
+            Log::channel('daily')->info('[fcm_check] FCM notification SENT successfully to female', [
+                'caller_id' => $caller->id,
+                'caller_name' => $caller->name,
+                'receiver_id' => $receiver->id,
+                'receiver_name' => $receiver->name,
+                'call_id' => $callId,
+                'call_type' => $callType,
+                'balance_time' => $balanceTime,
+                'fcm_result' => (string) $result
             ]);
             
         } catch (\Kreait\Firebase\Exception\MessagingException $e) {
@@ -1611,6 +1812,11 @@ class CallController extends Controller
                     'call_id' => $callId,
                     'error_type' => get_class($e)
                 ]);
+                Log::channel('daily')->error('[fcm_check] FCM notification FAILED - Messaging Exception', [
+                    'receiver_id' => $receiver->id,
+                    'call_id' => $callId,
+                    'error' => $errorMessage
+                ]);
             }
             // Don't fail the call if notification fails
         } catch (\Exception $e) {
@@ -1619,6 +1825,184 @@ class CallController extends Controller
                 'call_id' => $callId,
                 'error_type' => get_class($e),
                 'trace' => $e->getTraceAsString()
+            ]);
+            Log::channel('daily')->error('[fcm_check] FCM notification FAILED - Exception', [
+                'receiver_id' => $receiver->id,
+                'call_id' => $callId,
+                'error' => $e->getMessage()
+            ]);
+            // Don't fail the call if notification fails
+        }
+    }
+
+    /**
+     * Emit WebSocket event for call acceptance
+     * Makes HTTP call to WebSocket server to notify male instantly
+     */
+    private function emitCallAcceptedWebSocket($callerId, $callId, $receiverId)
+    {
+        try {
+            $socketUrl = config('websocket.url', 'http://localhost:3001');
+            $secret = config('websocket.secret');
+            
+            Log::info('[websocket_check] Attempting to notify male via WebSocket', [
+                'caller_id' => $callerId,
+                'call_id' => $callId,
+                'receiver_id' => $receiverId,
+                'socket_url' => $socketUrl,
+                'has_secret' => !empty($secret)
+            ]);
+            
+            if (empty($secret)) {
+                Log::warning('[websocket_check] ⚠️ WebSocket secret not configured, skipping WebSocket emission');
+                return;
+            }
+
+            $response = \Illuminate\Support\Facades\Http::timeout(2)
+                ->withHeaders([
+                    'X-Internal-Secret' => $secret,
+                    'Content-Type' => 'application/json'
+                ])
+                ->post("{$socketUrl}/api/emit/call-accepted", [
+                    'callerId' => $callerId,
+                    'callId' => $callId,
+                    'receiverId' => $receiverId
+                ]);
+            
+            if ($response->successful()) {
+                $emitted = $response->json('emitted', false);
+                $reason = $response->json('reason', null);
+                
+                Log::info('[websocket_check] WebSocket notification result', [
+                    'caller_id' => $callerId,
+                    'call_id' => $callId,
+                    'emitted' => $emitted,
+                    'reason' => $reason,
+                    'method' => 'WebSocket',
+                    'status' => 'SUCCESS'
+                ]);
+                Log::channel('daily')->info('[websocket_check] WebSocket notification result', [
+                    'caller_id' => $callerId,
+                    'call_id' => $callId,
+                    'emitted' => $emitted,
+                    'reason' => $reason,
+                    'method' => 'WebSocket'
+                ]);
+            } else {
+                Log::warning('[websocket_check] WebSocket emission request failed', [
+                    'caller_id' => $callerId,
+                    'call_id' => $callId,
+                    'status_code' => $response->status(),
+                    'response_body' => $response->body()
+                ]);
+                Log::channel('daily')->warning('[websocket_check] WebSocket emission request failed', [
+                    'caller_id' => $callerId,
+                    'call_id' => $callId,
+                    'status_code' => $response->status()
+                ]);
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('[websocket_check] WebSocket emission exception', [
+                'caller_id' => $callerId,
+                'call_id' => $callId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            Log::channel('daily')->error('[websocket_check] WebSocket emission exception', [
+                'caller_id' => $callerId,
+                'call_id' => $callId,
+                'error' => $e->getMessage()
+            ]);
+            // Don't fail the request if WebSocket emission fails - FCM is the backup
+        }
+    }
+
+    /**
+     * Notify caller that call was accepted by receiver
+     */
+    private function notifyCallAccepted($caller, $receiver, $callId, $callType)
+    {
+        if (!$caller->fcm_token) {
+            Log::warning('[call_accepted] Cannot notify male - No FCM token', [
+                'caller_id' => $caller->id,
+                'call_id' => $callId
+            ]);
+            Log::channel('daily')->warning('[call_accepted] Cannot notify male - No FCM token', [
+                'caller_id' => $caller->id,
+                'call_id' => $callId
+            ]);
+            return;
+        }
+
+        // Check if Firebase credentials file exists
+        $credentialsPath = config('firebase.credentials');
+        if (!file_exists($credentialsPath)) {
+            Log::error('[call_accepted] Cannot notify male - Firebase credentials file missing', [
+                'caller_id' => $caller->id,
+                'call_id' => $callId,
+                'credentials_path' => $credentialsPath,
+                'error' => 'Firebase credentials file not found'
+            ]);
+            Log::channel('daily')->error('[call_accepted] Cannot notify male - Firebase credentials file missing', [
+                'caller_id' => $caller->id,
+                'call_id' => $callId,
+                'credentials_path' => $credentialsPath,
+                'error' => 'Firebase credentials file not found'
+            ]);
+            return;
+        }
+
+        try {
+            $firebase = (new \Kreait\Firebase\Factory)
+                ->withServiceAccount($credentialsPath);
+            $messaging = $firebase->createMessaging();
+
+            // Prepare FCM data payload for call accepted notification
+            $data = [
+                'type' => 'call_accepted',
+                'callId' => (string) $callId,
+                'receiverId' => (string) $receiver->id,
+                'receiverName' => (string) $receiver->name,
+                'receiverPhoto' => (string) ($receiver->profile_image ?? ''),
+                'callType' => strtoupper((string) $callType),
+                'timestamp' => (string) (now()->timestamp * 1000),
+            ];
+
+            $message = \Kreait\Firebase\Messaging\CloudMessage::withTarget('token', $caller->fcm_token)
+                ->withData($data)
+                ->withAndroidConfig([
+                    'priority' => 'high',
+                ]);
+
+            $result = $messaging->send($message);
+            
+            // Handle result properly (result can be object/array, not string)
+            $resultString = is_object($result) ? json_encode($result) : (is_array($result) ? json_encode($result) : (string) $result);
+            
+            Log::info('[call_accepted] FCM notification SENT to male - Call accepted', [
+                'caller_id' => $caller->id,
+                'receiver_id' => $receiver->id,
+                'call_id' => $callId,
+                'fcm_result' => $resultString
+            ]);
+            Log::channel('daily')->info('[call_accepted] FCM notification SENT to male - Call accepted', [
+                'caller_id' => $caller->id,
+                'receiver_id' => $receiver->id,
+                'call_id' => $callId,
+                'fcm_result' => $resultString
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('[call_accepted] FCM notification FAILED to notify male', [
+                'caller_id' => $caller->id,
+                'call_id' => $callId,
+                'error' => $e->getMessage()
+            ]);
+            Log::channel('daily')->error('[call_accepted] FCM notification FAILED to notify male', [
+                'caller_id' => $caller->id,
+                'call_id' => $callId,
+                'error' => $e->getMessage()
             ]);
             // Don't fail the call if notification fails
         }
@@ -1663,62 +2047,105 @@ class CallController extends Controller
 
     /**
      * Generate Agora token
+     * Using exact same method from AGORA_TOKEN_GENERATION_COMPLETE_GUIDE.md
      */
     private function generateAgoraToken($callId)
     {
-        $appId = config('services.agora.app_id', env('AGORA_APP_ID'));
-        $appCertificate = config('services.agora.app_certificate', env('AGORA_APP_CERTIFICATE'));
-        $channelName = 'call_' . $callId;
-        $uid = 0; // 0 means any user can join
-        
-        // DEBUG: Log exact credentials being used
-        Log::debug("Token Generation Debug for call {$callId}:");
-        Log::debug("  - App ID: {$appId}");
-        Log::debug("  - Certificate: " . substr($appCertificate, 0, 20) . "...");
-        Log::debug("  - Channel: {$channelName}");
-        
-        // ============================================
-        // IMPORTANT: Token Generation Logic
-        // ============================================
-        // If App Certificate is NOT enabled in Agora Console (Unsecure mode),
-        // return empty string. The app will use null when joining channels.
-        // This is correct behavior for Agora projects without App Certificate.
-        // 
-        // To enable secure mode:
-        // 1. Go to Agora Console → Project Config
-        // 2. Enable "Primary Certificate"
-        // 3. The project status will change from "Unsecure" to "Secure"
-        // ============================================
-        
-        // Check if credentials are configured
-        if (empty($appId)) {
-            Log::warning('Agora App ID not configured');
-            return '';
-        }
-        
-        // If App Certificate is empty, project is in "Unsecure" mode
-        // Return empty token (app will use null with Agora SDK)
-        if (empty($appCertificate)) {
-            Log::info("Agora project in UNSECURE mode (no certificate) - using null token for call {$callId}");
-            return '';
-        }
-        
         try {
-            // Generate real Agora RTC token (expires in 24 hours)
-            $token = AgoraTokenBuilder::buildTokenWithDefault(
-                $appId,
-                $appCertificate,
-                $channelName,
-                $uid
+            // Get credentials from environment (EXACT as guide line 134-135)
+            $appID = env('AGORA_APP_ID');
+            $appCertificate = env('AGORA_APP_CERTIFICATE');
+
+            // Validate credentials (EXACT as guide line 138-143)
+            if (empty($appID) || empty($appCertificate)) {
+                Log::warning('[agora_token] Agora credentials not configured', [
+                    'call_id' => $callId,
+                    'app_id_set' => !empty($appID),
+                    'certificate_set' => !empty($appCertificate)
+                ]);
+                return '';
+            }
+
+            // Get parameters (EXACT as guide line 146-149)
+            $channelName = 'call_' . $callId;
+            $uid = (int) 0; // EXACT as guide: 0 for anonymous user
+            $roleInput = 'publisher'; // EXACT as guide: default 'publisher'
+            $expireTimeInSeconds = (int) 86400; // 24 hours (EXACT as guide allows up to 86400)
+
+            // Determine role (EXACT as guide line 152-154)
+            $role = strtolower($roleInput) === 'subscriber' 
+                ? RtcTokenBuilder::RoleSubscriber 
+                : RtcTokenBuilder::RolePublisher;
+
+            // Calculate expiration timestamp (EXACT as guide line 157-158)
+            $currentTimestamp = now()->getTimestamp();
+            $privilegeExpiredTs = $currentTimestamp + $expireTimeInSeconds;
+
+            // Generate token (EXACT method from guide line 161-168)
+            $rtcToken = RtcTokenBuilder::buildTokenWithUid(
+                $appID, 
+                $appCertificate, 
+                $channelName, 
+                $uid, 
+                $role, 
+                $privilegeExpiredTs
             );
             
-            Log::info("Agora token generated for call {$callId} (SECURE mode)");
-            return $token;
+            // Validate token generation
+            if (empty($rtcToken)) {
+                Log::error('[agora_token] Failed to generate Agora token - returned empty string', [
+                    'call_id' => $callId,
+                    'app_id' => $appID,
+                    'channel_name' => $channelName,
+                    'uid' => $uid
+                ]);
+                return '';
+            }
+            
+            // ✅ COMPLETE LOGGING: Log all token details for each call
+            Log::info('[agora_token] ✅ Agora token generated successfully', [
+                'call_id' => $callId,
+                'app_id' => $appID,
+                'channel_name' => $channelName,
+                'uid' => $uid,
+                'token' => $rtcToken, // Complete token
+                'token_length' => strlen($rtcToken),
+                'expires_in_seconds' => $expireTimeInSeconds,
+                'expires_at_timestamp' => $privilegeExpiredTs,
+                'expires_at_datetime' => date('Y-m-d H:i:s', $privilegeExpiredTs),
+                'role' => 'RolePublisher',
+                'method' => 'RtcTokenBuilder::buildTokenWithUid (EXACT as AGORA_TOKEN_GENERATION_COMPLETE_GUIDE.md)'
+            ]);
+            Log::channel('daily')->info('[agora_token] ✅ Agora token generated successfully', [
+                'call_id' => $callId,
+                'app_id' => $appID,
+                'channel_name' => $channelName,
+                'uid' => $uid,
+                'token' => $rtcToken, // Complete token
+                'token_length' => strlen($rtcToken),
+                'expires_in_seconds' => $expireTimeInSeconds
+            ]);
+            
+            return $rtcToken;
             
         } catch (\Exception $e) {
-            Log::error('Agora token generation failed: ' . $e->getMessage());
-            // Fallback to empty token if generation fails
-            Log::warning("Token generation failed, falling back to UNSECURE mode");
+            Log::error('[agora_token] Agora token generation failed', [
+                'call_id' => $callId,
+                'app_id' => $appID,
+                'channel_name' => $channelName,
+                'uid' => $uid,
+                'error' => $e->getMessage(),
+                'error_type' => get_class($e),
+                'trace' => $e->getTraceAsString()
+            ]);
+            Log::channel('daily')->error('[agora_token] Agora token generation failed', [
+                'call_id' => $callId,
+                'app_id' => $appID,
+                'channel_name' => $channelName,
+                'uid' => $uid,
+                'error' => $e->getMessage()
+            ]);
+            // Return empty string if generation fails (app will use null token)
             return '';
         }
     }
@@ -1942,8 +2369,19 @@ class CallController extends Controller
             $callTypeUpper = strtoupper($callType);
             
             // Generate Agora credentials (reuse existing method)
+            Log::info('[agora_token] 🔑 Generating Agora token for random_user call:', ['call_id' => $callId]);
             $agoraToken = $this->generateAgoraToken($callId);
             $channelName = 'call_' . $callId;
+            
+            // ✅ COMPLETE LOGGING: Log all credentials after generation for random_user
+            Log::info('[agora_token] ✅ Agora credentials generated for random_user call', [
+                'call_id' => $callId,
+                'app_id' => env('AGORA_APP_ID'),
+                'channel_name' => $channelName,
+                'uid' => 0,
+                'token' => $agoraToken, // Complete token
+                'token_length' => strlen($agoraToken)
+            ]);
 
             DB::beginTransaction();
             

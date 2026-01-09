@@ -549,11 +549,7 @@ public function getFemales(Request $request)
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'audio_call_enabled' => (bool) $user->audio_call_enabled,
-                'video_call_enabled' => (bool) $user->video_call_enabled,
-                'is_busy' => (bool) $user->is_busy
-            ],
+            'data' => 'Call availability updated successfully',  // Return string instead of object
             'message' => 'Call availability updated'
         ]);
     }

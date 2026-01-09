@@ -84,7 +84,9 @@ Route::middleware('auth:admin')->group(function () {
     // Call Management
     Route::prefix('calls')->name('calls.')->group(function () {
         Route::get('/', [CallController::class, 'index'])->name('index');
+        Route::post('/delete-by-phone', [CallController::class, 'deleteByPhone'])->name('delete-by-phone');
         Route::get('/{id}', [CallController::class, 'show'])->name('show');
+        Route::delete('/{id}', [CallController::class, 'destroy'])->name('destroy');
         Route::get('/analytics', [CallController::class, 'analytics'])->name('analytics');
     });
     
