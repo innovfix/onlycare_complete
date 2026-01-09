@@ -40,8 +40,11 @@ import com.onlycare.app.domain.model.CallType
 import com.onlycare.app.presentation.components.*
 import com.onlycare.app.presentation.navigation.Screen
 import com.onlycare.app.presentation.theme.*
+import android.util.Log
 import java.text.SimpleDateFormat
 import java.util.*
+
+private const val TAG_RECENT_CALLS = "RecentCallsScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +56,7 @@ fun RecentCallsScreen(
     var showFilterDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val isMale = remember { viewModel.getGender() == com.onlycare.app.domain.model.Gender.MALE }
+    val isFemale = remember { !isMale }
     
     // Detect when user scrolls to bottom for pagination
     val shouldLoadMore by remember {
@@ -205,11 +209,39 @@ fun RecentCallsScreen(
                             isAudioEnabled = availability?.audioEnabled ?: true,
                             isVideoEnabled = availability?.videoEnabled ?: true,
                             onAudioCall = {
+                                Log.i(TAG_RECENT_CALLS, "========================================")
+                                Log.i(TAG_RECENT_CALLS, "📞 RECENT PAGE - CALL INITIATED")
+                                Log.i(TAG_RECENT_CALLS, "========================================")
+                                Log.i(TAG_RECENT_CALLS, "User Type: ${if (isFemale) "FEMALE" else "MALE"}")
+                                Log.i(TAG_RECENT_CALLS, "Call Type: AUDIO")
+                                Log.i(TAG_RECENT_CALLS, "Receiver ID: ${call.otherUserId}")
+                                Log.i(TAG_RECENT_CALLS, "Receiver Name: $displayName")
+                                Log.i(TAG_RECENT_CALLS, "From: Recent Calls Page")
+                                if (isFemale) {
+                                    Log.i(TAG_RECENT_CALLS, "✅ FEMALE USER - Coin balance check will be SKIPPED")
+                                } else {
+                                    Log.i(TAG_RECENT_CALLS, "💰 MALE USER - Coin balance check will be performed")
+                                }
+                                Log.i(TAG_RECENT_CALLS, "========================================")
                                 navController.navigate(
                                     Screen.CallConnecting.createRoute(call.otherUserId, "audio")
                                 )
                             },
                             onVideoCall = {
+                                Log.i(TAG_RECENT_CALLS, "========================================")
+                                Log.i(TAG_RECENT_CALLS, "📞 RECENT PAGE - CALL INITIATED")
+                                Log.i(TAG_RECENT_CALLS, "========================================")
+                                Log.i(TAG_RECENT_CALLS, "User Type: ${if (isFemale) "FEMALE" else "MALE"}")
+                                Log.i(TAG_RECENT_CALLS, "Call Type: VIDEO")
+                                Log.i(TAG_RECENT_CALLS, "Receiver ID: ${call.otherUserId}")
+                                Log.i(TAG_RECENT_CALLS, "Receiver Name: $displayName")
+                                Log.i(TAG_RECENT_CALLS, "From: Recent Calls Page")
+                                if (isFemale) {
+                                    Log.i(TAG_RECENT_CALLS, "✅ FEMALE USER - Coin balance check will be SKIPPED")
+                                } else {
+                                    Log.i(TAG_RECENT_CALLS, "💰 MALE USER - Coin balance check will be performed")
+                                }
+                                Log.i(TAG_RECENT_CALLS, "========================================")
                                 navController.navigate(
                                     Screen.CallConnecting.createRoute(call.otherUserId, "video")
                                 )

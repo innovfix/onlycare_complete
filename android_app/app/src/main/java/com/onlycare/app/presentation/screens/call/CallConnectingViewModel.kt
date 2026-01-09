@@ -189,9 +189,18 @@ class CallConnectingViewModel @Inject constructor(
                 val userGender = sessionManager.getGender()
                 val isFemale = userGender == com.onlycare.app.domain.model.Gender.FEMALE
                 
+                Log.i(TAG, "========================================")
+                Log.i(TAG, "💰 COIN BALANCE CHECK")
+                Log.i(TAG, "========================================")
+                Log.i(TAG, "User Gender: ${if (isFemale) "FEMALE" else "MALE"}")
+                Log.i(TAG, "Call Type: ${callType.uppercase()}")
+                Log.i(TAG, "Receiver ID: $receiverId")
+                
                 if (isFemale) {
                     // ✅ FEMALE users can call without coin balance check
-                    Log.d(TAG, "✅ Female user - Skipping coin balance check, allowing call")
+                    Log.i(TAG, "✅ FEMALE USER - Skipping coin balance check")
+                    Log.i(TAG, "✅ Allowing call to proceed without coin validation")
+                    Log.i(TAG, "========================================")
                     initiateCallInternal(receiverId, callType, onSuccess)
                 } else {
                     // MALE users must have sufficient coins
