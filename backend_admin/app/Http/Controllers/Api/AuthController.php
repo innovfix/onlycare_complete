@@ -95,28 +95,110 @@ class AuthController extends Controller
             }
         }
 
-        // DEVELOPMENT MODE: Fixed OTP for all users until SMS gateway is implemented
-        // TODO: Replace with actual SMS gateway (Twilio, MSG91, etc.) in production
-        $otp = '011011'; // Fixed OTP for testing - change this when implementing SMS gateway
+        // Normalize phone for storage/verification (prevents duplicate accounts like 91xxxxxxxxxx vs xxxxxxxxxx)
+        $normalizedPhone = $this->normalizePhone($countryCode, $request->phone);
+
+        // Generate OTP (6-digit). Avoid "000000" to reduce common dummy-OTP guessing.
+        do {
+            $otp = str_pad(strval(random_int(0, 999999)), 6, '0', STR_PAD_LEFT);
+        } while ($otp === '000000');
         $otpId = 'OTP_' . time() . rand(1000, 9999);
+
+        // OTP Provider (AuthKey.io) configuration
+        // Docs: https://api.authkey.io/request
+        // Credentials from OTP_DOCUMENTATION.md
+        $authKey = env('AUTHKEY_API_KEY', 'dc0b07c812ca4934'); // Fallback to documented credentials
+        $sid = env('AUTHKEY_SID', '14324'); // Fallback to documented credentials
+
+        // Convert +91 -> 91 for AuthKey (if needed)
+        $authKeyCountryCode = ltrim($countryCode, '+');
+
+        $otpSent = false;
+        $providerMessage = null;
+
+        if (!empty($authKey) && !empty($sid)) {
+            try {
+                Log::info('📧 Sending OTP via AuthKey.io', [
+                    'phone' => $request->phone,
+                    'country_code' => $authKeyCountryCode,
+                    'otp_id' => $otpId
+                ]);
+
+                $smsResponse = Http::timeout(10)->get('https://api.authkey.io/request', [
+                    'authkey' => $authKey,
+                    'mobile' => $request->phone,
+                    'country_code' => $authKeyCountryCode,
+                    'sid' => $sid,
+                    'otp' => $otp,
+                ]);
+
+                if ($smsResponse->successful()) {
+                    $smsJson = $smsResponse->json();
+                    $providerMessage = $smsJson['Message'] ?? null;
+                    $otpSent = ($providerMessage === 'Submitted Successfully');
+
+                    if ($otpSent) {
+                        Log::info('✅ OTP sent successfully via AuthKey.io', [
+                            'phone' => $request->phone,
+                            'otp_id' => $otpId
+                        ]);
+                    } else {
+                        Log::warning('⚠️ AuthKey.io API returned non-success message', [
+                            'phone' => $request->phone,
+                            'message' => $providerMessage,
+                            'response' => $smsJson
+                        ]);
+                    }
+                } else {
+                    Log::warning('❌ AuthKey OTP API failed', [
+                        'status' => $smsResponse->status(),
+                        'body' => $smsResponse->body(),
+                        'phone' => $request->phone
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::error('❌ AuthKey OTP API error', [
+                    'error' => $e->getMessage(),
+                    'phone' => $request->phone,
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
+        } else {
+            Log::warning('⚠️ AuthKey credentials not configured', [
+                'phone' => $request->phone,
+                'has_authkey' => !empty($authKey),
+                'has_sid' => !empty($sid)
+            ]);
+        }
+
+        // If OTP sending failed and we're in production, return error
+        if (!$otpSent && app()->environment('production')) {
+            return response()->json([
+                'success' => false,
+                'message' => $providerMessage ?: 'Failed to send OTP. Please try again.'
+            ], 500);
+        }
 
         // Store OTP in cache (expires in 10 minutes)
         cache()->put($otpId, [
-            'phone' => $request->phone,
+            'phone' => $normalizedPhone,
             'otp' => $otp,
             'country_code' => $request->country_code
         ], now()->addMinutes(10));
 
-        // TODO: Send actual SMS using SMS gateway (Twilio, MSG91, etc.)
-        // For development, we'll just return the OTP
-        
-        return response()->json([
+        $payload = [
             'success' => true,
             'message' => 'OTP sent successfully',
             'otp_id' => $otpId,
             'expires_in' => 600,
-            'otp' => config('app.debug') ? $otp : null // Only in debug mode
-        ]);
+        ];
+
+        // Never echo OTP in production responses (even if APP_DEBUG=true by mistake).
+        if (config('app.debug') && !app()->environment('production') && env('OTP_ECHO_IN_DEBUG', false)) {
+            $payload['otp'] = $otp;
+        }
+        
+        return response()->json($payload);
     }
 
     /**
@@ -1945,17 +2027,43 @@ public function update_pancard(Request $request)
             Log::error('❌ Get Remaining Time Exception', [
                 'user_id' => $request->user_id ?? 'unknown',
                 'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while processing your request. Please try again.',
-                'error' => config('app.debug') ? $e->getMessage() : null
+                'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Normalize phone digits into a consistent DB key.
+     * - For India (+91), store the last 10 digits (strips leading 91 / 0)
+     * - For other countries, store digits as-is (9-15 digits typical)
+     */
+    private function normalizePhone(?string $countryCode, string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+
+        // India normalization
+        if ($countryCode === '+91') {
+            if (str_starts_with($digits, '91') && strlen($digits) > 10) {
+                $digits = substr($digits, 2);
+            }
+            if (strlen($digits) > 10) {
+                $digits = substr($digits, -10);
+            }
+            // Strip leading 0 if present and still >10 (defensive)
+            if (str_starts_with($digits, '0') && strlen($digits) > 10) {
+                $digits = ltrim($digits, '0');
+                if (strlen($digits) > 10) {
+                    $digits = substr($digits, -10);
+                }
+            }
+        }
+
+        return $digits;
     }
 
     /**
@@ -2026,4 +2134,5 @@ public function update_pancard(Request $request)
             ], 500);
         }
     }
+
 }
