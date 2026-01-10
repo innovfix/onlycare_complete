@@ -15,7 +15,7 @@ interface CallApiService {
     @POST("calls/{callId}/accept")
     fun acceptCall(
         @Path("callId") callId: String
-    ): Call<ApiResponse<CallDto>>
+    ): Call<EndCallResponse>  // ✅ Uses 'call' field (same structure as accept response)
     
     @POST("calls/{callId}/reject")
     fun rejectCall(
@@ -69,4 +69,9 @@ interface CallApiService {
     fun getCallStatus(
         @Path("callId") callId: String
     ): Call<ApiResponse<CallDto>>
+    
+    @POST("calls/switch-to-video")
+    fun requestSwitchToVideo(
+        @Body request: SwitchToVideoRequest
+    ): Call<SwitchToVideoResponse>
 }

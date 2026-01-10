@@ -599,22 +599,23 @@ fun VideoCallScreen(
                     }
                 }
                 
-                Spacer(modifier = Modifier.width(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Circle,
-                        contentDescription = null,
-                        tint = androidx.compose.ui.graphics.Color(0xFFFFC107),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${state.user?.coinBalance ?: 0}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                }
+                // ✅ COIN BALANCE HIDDEN (as requested by user)
+                // Spacer(modifier = Modifier.width(10.dp))
+                // Row(verticalAlignment = Alignment.CenterVertically) {
+                //     Icon(
+                //         imageVector = Icons.Default.Circle,
+                //         contentDescription = null,
+                //         tint = androidx.compose.ui.graphics.Color(0xFFFFC107),
+                //         modifier = Modifier.size(18.dp)
+                //     )
+                //     Spacer(modifier = Modifier.width(4.dp))
+                //     Text(
+                //         text = "${state.user?.coinBalance ?: 0}",
+                //         style = MaterialTheme.typography.titleMedium,
+                //         fontWeight = FontWeight.Bold,
+                //         color = TextPrimary
+                //     )
+                // }
             }
         }
         

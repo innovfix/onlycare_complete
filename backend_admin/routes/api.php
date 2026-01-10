@@ -147,6 +147,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/history', [CallController::class, 'getCallHistory']);
             Route::get('/recent-sessions', [CallController::class, 'getRecentSessions']);
             Route::get('/recent-callers', [CallController::class, 'getRecentCallers']);
+            Route::post('/switch-to-video', [CallController::class, 'requestSwitchToVideo']); // ✅ NEW: Switch audio to video
             
             // Dynamic routes with {callId} parameter MUST come AFTER static routes
             Route::get('/{callId}', [CallController::class, 'getCallStatus']);

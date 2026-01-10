@@ -115,6 +115,9 @@ fun AudioCallScreen(
     // State for end call confirmation dialog
     var showEndCallDialog by remember { mutableStateOf(false) }
     
+    // State for switch-to-video dialogs
+    var showSwitchToVideoConfirmationDialog by remember { mutableStateOf(false) }
+    
     // Get current user ID and gender from SessionManager
     val context = androidx.compose.ui.platform.LocalContext.current
     val sessionManager = remember {
@@ -285,21 +288,32 @@ fun AudioCallScreen(
         }
     }
     
+    // Show switch-to-video error/waiting messages
+    LaunchedEffect(state.switchToVideoDeclinedMessage) {
+        state.switchToVideoDeclinedMessage?.let { message ->
+            android.util.Log.e("AudioCallScreen", "📹 Switch-to-video message: $message")
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
+    
     // Handle remote user ending call
     // ✅ CRITICAL FIX: Only check isCallEnded AFTER call has REALLY started (prevents stale state from previous call)
-    LaunchedEffect(state.isCallEnded, state.callId, state.callReallyStarted) {
+    LaunchedEffect(state.isCallEnded, state.callId, state.callReallyStarted, state.oldAudioCallId) {
         android.util.Log.d("AudioCallScreen", "========================================")
         android.util.Log.d("AudioCallScreen", "🔍 LaunchedEffect(isCallEnded) CHECKING:")
         android.util.Log.d("AudioCallScreen", "   state.isCallEnded = ${state.isCallEnded}")
         android.util.Log.d("AudioCallScreen", "   state.callId = ${state.callId}")
         android.util.Log.d("AudioCallScreen", "   state.callReallyStarted = ${state.callReallyStarted}")
+        android.util.Log.d("AudioCallScreen", "   state.oldAudioCallId = ${state.oldAudioCallId}")
+        android.util.Log.d("AudioCallScreen", "   state.currentCallType = ${state.currentCallType}")
         android.util.Log.d("AudioCallScreen", "========================================")
         
-        // ✅ TRIPLE GUARD: Only process if:
+        // ✅ HYBRID GUARD: Only process if:
         // 1. Call has ended (isCallEnded = true)
         // 2. Call ID is set (not null/empty)
         // 3. Call was REALLY started (not just stale state from previous call)
-        if (state.isCallEnded && !state.callId.isNullOrEmpty() && state.callReallyStarted) {
+        // 4. Normal call (oldAudioCallId is null) OR Video call after switch (currentCallType == "VIDEO")
+        if (state.isCallEnded && !state.callId.isNullOrEmpty() && state.callReallyStarted && (state.oldAudioCallId == null || state.currentCallType == "VIDEO")) {
             android.util.Log.d("AudioCallScreen", "========================================")
             android.util.Log.d("AudioCallScreen", "🚨 ALL CONDITIONS MET - ENDING CALL")
             android.util.Log.d("AudioCallScreen", "Call ID: ${state.callId}")
@@ -386,6 +400,116 @@ fun AudioCallScreen(
         }
     )
     
+    // ✅ Navigate to video call when switch is accepted (SIMPLE APPROACH)
+    // ✅ HYBRID APPROACH: No navigation! Just setup video surfaces when switching to video
+    LaunchedEffect(state.currentCallType) {
+        android.util.Log.e("AudioCallScreen", "╔════════════════════════════════════════════════════════════")
+        android.util.Log.e("AudioCallScreen", "║ 🔍 LaunchedEffect(currentCallType) TRIGGERED")
+        android.util.Log.e("AudioCallScreen", "╠════════════════════════════════════════════════════════════")
+        android.util.Log.e("AudioCallScreen", "║ Current Call Type: ${state.currentCallType}")
+        
+        if (state.currentCallType == "VIDEO") {
+            android.util.Log.e("AudioCallScreen", "╠════════════════════════════════════════════════════════════")
+            android.util.Log.e("AudioCallScreen", "║ ✅ VIDEO MODE DETECTED - UI SHOULD SHOW VIDEO SURFACES")
+            android.util.Log.e("AudioCallScreen", "║ Call ID: ${state.callId}")
+            android.util.Log.e("AudioCallScreen", "║ Old Audio Call ID: ${state.oldAudioCallId}")
+            android.util.Log.e("AudioCallScreen", "╚════════════════════════════════════════════════════════════")
+            // Video surfaces will be setup in ConnectedCallUI when it detects currentCallType == "VIDEO"
+        } else {
+            android.util.Log.e("AudioCallScreen", "║ Current mode: AUDIO (not switching)")
+            android.util.Log.e("AudioCallScreen", "╚════════════════════════════════════════════════════════════")
+        }
+    }
+    
+    // ✅ Show dialog to receiver when they get a switch-to-video request
+    if (state.showSwitchToVideoRequestDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                viewModel.declineSwitchToVideo()
+            },
+            title = {
+                Text(
+                    "Switch to Video Call?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary  // ✅ Explicit dark color for better contrast
+                )
+            },
+            text = {
+                Text(
+                    "${state.user?.getDisplayName() ?: "User"} wants to switch to video call.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary  // ✅ Explicit dark color for better contrast
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.acceptSwitchToVideo()
+                    }
+                ) {
+                    Text("Accept", color = Primary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.declineSwitchToVideo()
+                    }
+                ) {
+                    Text("Decline", color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            containerColor = White,  // ✅ White background for maximum contrast
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary
+        )
+    }
+    
+    // ✅ Show confirmation dialog when user wants to send switch request
+    if (showSwitchToVideoConfirmationDialog) {
+        AlertDialog(
+            onDismissRequest = { showSwitchToVideoConfirmationDialog = false },
+            title = {
+                Text(
+                    "Switch to Video Call?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary  // ✅ Explicit dark color for better contrast
+                )
+            },
+            text = {
+                Text(
+                    "Do you want to switch this audio call to video call?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary  // ✅ Explicit dark color for better contrast
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSwitchToVideoConfirmationDialog = false
+                        android.util.Log.e("AudioCallScreen", "📹 User clicked YES - requesting switch to video")
+                        viewModel.requestSwitchToVideo()
+                        Toast.makeText(context, "Requesting switch to video...", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Yes", color = Primary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showSwitchToVideoConfirmationDialog = false }
+                ) {
+                    Text("No", color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            containerColor = White,  // ✅ White background for maximum contrast
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary
+        )
+    }
+    
     Box(modifier = Modifier.fillMaxSize()) {
         // Light theme background
         Box(
@@ -441,6 +565,9 @@ fun AudioCallScreen(
                 onSpeakerToggle = { viewModel.toggleSpeaker() },
                 onEndCall = {
                     showEndCallDialog = true
+                },
+                onSwitchToVideoClick = {
+                    showSwitchToVideoConfirmationDialog = true
                 }
             )
         }
@@ -774,9 +901,47 @@ private fun ConnectedCallUI(
     state: AudioCallState,
     onMuteToggle: () -> Unit,
     onSpeakerToggle: () -> Unit,
-    onEndCall: () -> Unit
+    onEndCall: () -> Unit,
+    onSwitchToVideoClick: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    android.util.Log.e("ConnectedCallUI", "╔════════════════════════════════════════════════════════════")
+    android.util.Log.e("ConnectedCallUI", "║ 🔍 ConnectedCallUI Composing")
+    android.util.Log.e("ConnectedCallUI", "║ Current Call Type: '${state.currentCallType}'")
+    android.util.Log.e("ConnectedCallUI", "╚════════════════════════════════════════════════════════════")
+    
+    // ✅ Use when expression to ensure only ONE UI renders
+    when (state.currentCallType) {
+        "VIDEO" -> {
+            android.util.Log.e("ConnectedCallUI", "✅ Rendering VideoCallUI ONLY")
+            VideoCallUI(
+                state = state,
+                onMuteToggle = onMuteToggle,
+                onSpeakerToggle = onSpeakerToggle,
+                onEndCall = onEndCall,
+                viewModel = androidx.hilt.navigation.compose.hiltViewModel()
+            )
+        }
+        else -> {
+            android.util.Log.e("ConnectedCallUI", "✅ Rendering AudioCallUI ONLY")
+            AudioCallUI(
+                state = state,
+                onMuteToggle = onMuteToggle,
+                onSpeakerToggle = onSpeakerToggle,
+                onEndCall = onEndCall,
+                onSwitchToVideoClick = onSwitchToVideoClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun AudioCallUI(
+    state: AudioCallState,
+    onMuteToggle: () -> Unit,
+    onSpeakerToggle: () -> Unit,
+    onEndCall: () -> Unit,
+    onSwitchToVideoClick: () -> Unit
+) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -847,6 +1012,30 @@ private fun ConnectedCallUI(
                 }
             }
             
+            // ✅ NEW: Switch to Video Button
+            IconButton(
+                onClick = onSwitchToVideoClick,
+                modifier = Modifier.size(64.dp)
+            ) {
+                Surface(
+                    color = ThemeSurface,
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = "Switch to Video",
+                            tint = Primary
+                        )
+                    }
+                }
+            }
+            
             // End Call
             EndCallButton(onClick = onEndCall)
             
@@ -877,7 +1066,209 @@ private fun ConnectedCallUI(
         
         Spacer(modifier = Modifier.height(40.dp))
         }
+}
+
+@Composable
+private fun VideoCallUI(
+    state: AudioCallState,
+    onMuteToggle: () -> Unit,
+    onSpeakerToggle: () -> Unit,
+    onEndCall: () -> Unit,
+    viewModel: AudioCallViewModel
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // ✅ Remote Video - ONLY show when remote user joined (like VideoCallScreen)
+        if (state.remoteUserJoined && state.remoteUid != 0) {
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { context ->
+                    android.view.SurfaceView(context).apply {
+                        setZOrderMediaOverlay(false)
+                        setZOrderOnTop(false)
+                        // Setup remote video with actual remote UID
+                        viewModel.getAgoraManager()?.setupRemoteVideo(this, state.remoteUid)
+                        android.util.Log.e("VideoCallUI", "✅ Remote SurfaceView created for UID: ${state.remoteUid}")
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        
+        // ✅ Local Video - with SurfaceHolder callback (like VideoCallScreen)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(16.dp)
+                .width(120.dp)
+                .height(160.dp)
+                .background(ThemeSurface, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+        ) {
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { context ->
+                    android.util.Log.e("VideoCallUI", "🏗️ Creating local SurfaceView...")
+                    android.view.SurfaceView(context).apply {
+                        setZOrderMediaOverlay(true)
+                        setZOrderOnTop(true)
+                        holder.setFixedSize(320, 240)
+                        
+                        // Wait for surface to be ready before setting up video
+                        holder.addCallback(object : android.view.SurfaceHolder.Callback {
+                            override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                                android.util.Log.e("VideoCallUI", "📱 Surface CREATED - now setting up camera...")
+                                viewModel.getAgoraManager()?.let { manager ->
+                                    manager.setupLocalVideo(this@apply)
+                                    android.util.Log.e("VideoCallUI", "✅ Local video setup complete!")
+                                }
+                            }
+                            
+                            override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {}
+                            override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {}
+                        })
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        
+        // ✅ Top Info Bar (User name + Timer + Coin balance) - EXACT match to VideoCallScreen
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(16.dp)
+                .wrapContentWidth()
+                .widthIn(max = 260.dp),
+            color = ThemeSurface.copy(alpha = 0.92f),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.widthIn(max = 180.dp)) {
+                    Text(
+                        text = state.user?.getDisplayName() ?: "User",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    
+                    // Countdown Timer - ALWAYS show for both male and female
+                    Spacer(modifier = Modifier.height(4.dp))
+                    CompactCallCountdownTimer(
+                        remainingSeconds = state.remainingTime,
+                        isLowTime = state.isLowTime
+                    )
+                }
+                
+                // ✅ COIN BALANCE HIDDEN (as requested by user)
+                // Spacer(modifier = Modifier.width(10.dp))
+                // Row(verticalAlignment = Alignment.CenterVertically) {
+                //     Icon(
+                //         imageVector = Icons.Default.Circle,
+                //         contentDescription = null,
+                //         tint = androidx.compose.ui.graphics.Color(0xFFFFC107),
+                //         modifier = Modifier.size(18.dp)
+                //     )
+                //     Spacer(modifier = Modifier.width(4.dp))
+                //     Text(
+                //         text = "${state.user?.coinBalance ?: 0}",
+                //         style = MaterialTheme.typography.titleMedium,
+                //         fontWeight = FontWeight.Bold,
+                //         color = TextPrimary
+                //     )
+                // }
+            }
+        }
+        
+        // ✅ Bottom Controls (Mute, End Call, Speaker)
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 32.dp, start = 24.dp, end = 24.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Mute Button
+            IconButton(
+                onClick = onMuteToggle,
+                modifier = Modifier.size(64.dp)
+            ) {
+                Surface(
+                    color = if (state.isMuted) ErrorRed else ThemeSurface,
+                    shape = CircleShape,
+                    tonalElevation = 4.dp,
+                    shadowElevation = 4.dp
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (state.isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                            contentDescription = "Mute",
+                            tint = if (state.isMuted) White else Primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            }
+            
+            // End Call Button
+            IconButton(
+                onClick = onEndCall,
+                modifier = Modifier.size(72.dp)
+            ) {
+                Surface(
+                    color = ErrorRed,
+                    shape = CircleShape,
+                    tonalElevation = 4.dp,
+                    shadowElevation = 4.dp
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CallEnd,
+                            contentDescription = "End Call",
+                            tint = White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+            }
+            
+            // Speaker Button
+            IconButton(
+                onClick = onSpeakerToggle,
+                modifier = Modifier.size(64.dp)
+            ) {
+                Surface(
+                    color = if (state.isSpeakerOn) Primary else ThemeSurface,
+                    shape = CircleShape,
+                    tonalElevation = 4.dp,
+                    shadowElevation = 4.dp
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (state.isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeDown,
+                            contentDescription = "Speaker",
+                            tint = if (state.isSpeakerOn) White else Primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
+    // ✅ VideoCallUI closing brace - NO duplicate controls!
 }
 
 private fun formatDuration(seconds: Int): String {

@@ -336,6 +336,56 @@ class AgoraManager @Inject constructor(@ApplicationContext private val context: 
     }
     
     /**
+     * Enable video in same session (for audio → video switch)
+     * ✅ HYBRID APPROACH: Don't leave channel, just enable video!
+     */
+    fun enableVideoInSameSession() {
+        try {
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ 🎥 ENABLING VIDEO IN SAME SESSION (HYBRID APPROACH)")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
+            // STEP 1: Enable video module
+            rtcEngine?.enableVideo()
+            Log.d(TAG, "✅ Video module enabled")
+            
+            // STEP 2: Set video encoder configuration
+            val encoderConfig = VideoEncoderConfiguration(
+                VideoEncoderConfiguration.VD_640x480,
+                VideoEncoderConfiguration.FRAME_RATE.FRAME_RATE_FPS_15,
+                VideoEncoderConfiguration.STANDARD_BITRATE,
+                VideoEncoderConfiguration.ORIENTATION_MODE.ORIENTATION_MODE_FIXED_PORTRAIT
+            )
+            rtcEngine?.setVideoEncoderConfiguration(encoderConfig)
+            Log.d(TAG, "✅ Video encoder configured (640x480, 15fps)")
+            
+            // STEP 3: Enable local video capture
+            rtcEngine?.enableLocalVideo(true)
+            Log.d(TAG, "✅ Local video capture enabled")
+            
+            // STEP 4: ✅ CRITICAL - Update channel media options to PUBLISH video!
+            val mediaOptions = io.agora.rtc2.ChannelMediaOptions()
+            mediaOptions.publishCameraTrack = true  // ✅ Publish video to channel
+            mediaOptions.publishMicrophoneTrack = true  // Keep publishing audio
+            mediaOptions.autoSubscribeAudio = true  // Subscribe to remote audio
+            mediaOptions.autoSubscribeVideo = true  // ✅ Subscribe to remote video
+            
+            val updateResult = rtcEngine?.updateChannelMediaOptions(mediaOptions)
+            Log.e(TAG, "✅ Channel media options updated (result: $updateResult) - VIDEO NOW PUBLISHING!")
+            
+            // STEP 5: Unmute local video stream (ensure it's not muted)
+            rtcEngine?.muteLocalVideoStream(false)
+            Log.d(TAG, "✅ Local video stream unmuted")
+            
+            Log.e(TAG, "✅ VIDEO FULLY ENABLED - Both users should see each other now!")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error enabling video in same session: ${e.message}", e)
+            e.printStackTrace()
+        }
+    }
+    
+    /**
      * Setup local video view
      */
     fun setupLocalVideo(view: android.view.SurfaceView) {

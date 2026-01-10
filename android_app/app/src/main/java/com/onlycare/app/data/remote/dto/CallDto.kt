@@ -211,3 +211,61 @@ data class IncomingCallDto(
     val balanceTime: String? = null // Time remaining for the call (e.g., "90:00")
 )
 
+/**
+ * Switch To Video Request
+ */
+data class SwitchToVideoRequest(
+    @SerializedName("call_id")
+    val callId: String
+)
+
+/**
+ * Switch To Video Response
+ */
+data class SwitchToVideoResponse(
+    @SerializedName("success")
+    val success: Boolean = false,
+    
+    @SerializedName("message")
+    val message: String? = null,
+    
+    @SerializedName("data")
+    val data: SwitchToVideoData? = null,
+    
+    @SerializedName("error")
+    val error: ApiError? = null
+)
+
+/**
+ * Switch To Video Data
+ */
+data class SwitchToVideoData(
+    @SerializedName("old_call_id")
+    val oldCallId: String,
+    
+    @SerializedName("new_call_id")
+    val newCallId: String,
+    
+    @SerializedName("call_type")
+    val callType: String,
+    
+    @SerializedName("channel_name")
+    val channelName: String,
+    
+    @SerializedName("agora_token")
+    val agoraToken: String,
+    
+    @SerializedName("agora_app_id")
+    val agoraAppId: String,
+    
+    @SerializedName("balance_time")
+    val balanceTime: String,
+    
+    @SerializedName("receiver_id")
+    val receiverId: String,
+    
+    @SerializedName("caller_id")
+    val callerId: String
+)
+
+

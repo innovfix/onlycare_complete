@@ -767,6 +767,14 @@ class CallController extends Controller
                 'timestamp' => now()->toIso8601String()
             ]);
 
+            // ✅ Calculate balance_time based on MALE's coins (who is paying)
+            $maleUser = ($caller->user_type === 'MALE') ? $caller : $receiver;
+            $settings = AppSetting::first();
+            $callRate = ($call->call_type === 'VIDEO') 
+                ? ($settings->video_call_rate ?? 60) 
+                : ($settings->audio_call_rate ?? 10);
+            $balanceTime = $this->calculateBalanceTime($maleUser->coin_balance, $callRate);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Call accepted',
@@ -778,7 +786,8 @@ class CallController extends Controller
                     'agora_app_id' => config('services.agora.app_id'),
                     'agora_token' => $agoraToken,
                     'agora_uid' => 0,  // ✅ CRITICAL: Android must use UID=0 when joining
-                    'channel_name' => $channelName
+                    'channel_name' => $channelName,
+                    'balance_time' => $balanceTime  // ✅ NEW: Return balance_time based on MALE's coins
                 ]
             ]);
 
@@ -1075,6 +1084,175 @@ class CallController extends Controller
         } catch (\Exception $e) {
             Log::error('FCM cancellation notification failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Request switch from audio to video call
+     * Creates new video call immediately for seamless transition
+     */
+    public function requestSwitchToVideo(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'call_id' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'VALIDATION_ERROR',
+                    'message' => 'Call ID is required'
+                ]
+            ], 422);
+        }
+
+        $requestingUser = $request->user();
+        $oldCallId = $request->call_id;
+
+        // Handle call ID format
+        if (!str_starts_with($oldCallId, 'CALL_')) {
+            $oldCallId = 'CALL_' . $oldCallId;
+        }
+
+        // 1. VALIDATE OLD CALL EXISTS & IS AUDIO & ONGOING
+        $oldCall = Call::find($oldCallId);
+        
+        if (!$oldCall) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'CALL_NOT_FOUND',
+                    'message' => 'Call not found'
+                ]
+            ], 404);
+        }
+
+        // Check if requesting user is part of this call
+        $isCaller = ($oldCall->caller_id === $requestingUser->id);
+        $isReceiver = ($oldCall->receiver_id === $requestingUser->id);
+        
+        if (!$isCaller && !$isReceiver) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'UNAUTHORIZED',
+                    'message' => 'You are not part of this call'
+                ]
+            ], 403);
+        }
+
+        // Check call type is AUDIO
+        if (strtoupper($oldCall->call_type) !== 'AUDIO') {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'INVALID_CALL_TYPE',
+                    'message' => 'Call is not an audio call'
+                ]
+            ], 400);
+        }
+
+        // Check call is ONGOING and not ended
+        if ($oldCall->status !== 'ONGOING' || $oldCall->ended_at !== null) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'CALL_NOT_ACTIVE',
+                    'message' => 'Call is not active'
+                ]
+            ], 400);
+        }
+
+        // 2. VALIDATE MALE HAS SUFFICIENT COINS
+        $caller = User::find($oldCall->caller_id);
+        $receiver = User::find($oldCall->receiver_id);
+        
+        // MALE always pays
+        $maleUser = (strtoupper($caller->user_type) === 'MALE') ? $caller : $receiver;
+        $femaleUser = (strtoupper($caller->user_type) === 'FEMALE') ? $caller : $receiver;
+        
+        $settings = AppSetting::first();
+        $videoCallRate = $settings->video_call_rate ?? 60;
+        
+        if ($maleUser->coin_balance < $videoCallRate) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'INSUFFICIENT_COINS',
+                    'message' => sprintf(
+                        'Insufficient coins for video call. Minimum %d coins required.',
+                        $videoCallRate
+                    ),
+                    'details' => [
+                        'required' => $videoCallRate,
+                        'available' => $maleUser->coin_balance
+                    ]
+                ]
+            ], 400);
+        }
+
+        // 3. CREATE NEW VIDEO CALL IMMEDIATELY
+        $newCallId = 'CALL_' . time() . rand(1000, 9999);
+        $channelName = 'onlycare_' . time() . '_' . rand(1000, 9999);
+        
+        // Generate Agora token for new video call
+        $appId = env('AGORA_APP_ID');
+        $appCertificate = env('AGORA_APP_CERTIFICATE');
+        $uid = 0;
+        $expirationTime = time() + 3600; // 1 hour
+        
+        $token = RtcTokenBuilder::buildTokenWithUid(
+            $appId,
+            $appCertificate,
+            $channelName,
+            $uid,
+            RtcTokenBuilder::RolePublisher,  // ✅ FIXED: Correct constant name
+            $expirationTime
+        );
+
+        // Calculate balance time (for male) - ✅ FIXED: Pass coin balance and rate
+        $balanceTime = $this->calculateBalanceTime($maleUser->coin_balance, $videoCallRate);
+
+        // Create new video call record
+        $newCall = Call::create([
+            'id' => $newCallId,
+            'caller_id' => $requestingUser->id,  // Requester becomes caller of video call
+            'receiver_id' => $isCaller ? $receiver->id : $caller->id,
+            'call_type' => 'VIDEO',
+            'status' => 'PENDING',  // Will become ONGOING when accepted
+            'channel_name' => $channelName,
+            'agora_token' => $token,
+            'agora_app_id' => $appId,
+            'created_at' => now(),
+            'upgraded_from_call_id' => $oldCallId,  // Track that this is an upgrade
+        ]);
+
+        Log::info('✅ New VIDEO call created for switch request', [
+            'old_call_id' => $oldCallId,
+            'new_call_id' => $newCallId,
+            'requesting_user' => $requestingUser->id,
+            'call_type' => 'VIDEO',
+            'channel' => $channelName,
+            'male_balance' => $maleUser->coin_balance,
+            'balance_time' => $balanceTime
+        ]);
+
+        // 4. Return new call details for seamless switch
+        return response()->json([
+            'success' => true,
+            'message' => 'Video call created successfully',
+            'data' => [
+                'old_call_id' => $oldCallId,
+                'new_call_id' => $newCallId,
+                'call_type' => 'VIDEO',
+                'channel_name' => $channelName,
+                'agora_token' => $token,
+                'agora_app_id' => $appId,
+                'balance_time' => $balanceTime,
+                'receiver_id' => $isCaller ? $receiver->id : $caller->id,
+                'caller_id' => $requestingUser->id
+            ]
+        ]);
     }
 
     /**

@@ -15,8 +15,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Call as RetrofitCall
 import retrofit2.Response
-import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -1309,15 +1310,21 @@ class ApiDataRepository @Inject constructor(
         }
     }
 
-    suspend fun acceptCall(callId: String): Result<Unit> {
+    suspend fun acceptCall(callId: String): Result<CallDto> {
         return try {
             Log.d(TAG, "Accepting call: $callId")
             val response = execute(callApiService.acceptCall(callId))
             
             if (response.isSuccessful && response.body()?.success == true) {
-                Log.d(TAG, "Call accepted successfully: $callId")
-                // No need to return call data - receiver already has it from IncomingCallDto
-                Result.success(Unit)
+                // Backend returns {'success': true, 'call': {...}}
+                // Using EndCallResponse which has a 'call' field
+                val callData = response.body()?.call
+                Log.d(TAG, "Call accepted successfully: $callId, balance_time: ${callData?.balanceTime}")
+                if (callData != null) {
+                    Result.success(callData)
+                } else {
+                    Result.failure(Exception("Call data is null"))
+                }
             } else {
                 val errorMsg = response.errorBody()?.string() ?: response.message()
                 Log.e(TAG, "Failed to accept call: $errorMsg")
@@ -1325,6 +1332,86 @@ class ApiDataRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "acceptCall error", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun requestSwitchToVideo(callId: String): Result<SwitchToVideoResponse> {
+        return try {
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ 📤 SWITCH TO VIDEO API REQUEST")
+            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ Call ID: $callId")
+            Log.e(TAG, "║ Endpoint: POST /api/v1/calls/switch-to-video")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
+            val request = SwitchToVideoRequest(callId = callId)
+            val response = execute(callApiService.requestSwitchToVideo(request))
+            
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ 📡 API RESPONSE RECEIVED")
+            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ HTTP Code: ${response.code()}")
+            Log.e(TAG, "║ Is Successful: ${response.isSuccessful}")
+            Log.e(TAG, "║ Response Body Success: ${response.body()?.success}")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
+            if (response.isSuccessful && response.body()?.success == true) {
+                val data = response.body()
+                Log.e(TAG, "✅ Switch-to-video request validated. New call ID: ${data?.data?.newCallId}")
+                Result.success(data!!)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                val responseBody = response.body()
+                
+                Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ ❌ API REQUEST FAILED")
+                Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ HTTP Code: ${response.code()}")
+                Log.e(TAG, "║ Error Body: $errorBody")
+                Log.e(TAG, "║ Response Body: $responseBody")
+                Log.e(TAG, "║ Response Error: ${responseBody?.error}")
+                Log.e(TAG, "║ Error Code: ${responseBody?.error?.code}")
+                Log.e(TAG, "║ Error Message: ${responseBody?.error?.message}")
+                Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                
+                val errorMsg = try {
+                    if (responseBody?.error?.message != null) {
+                        responseBody.error.message
+                    } else if (errorBody != null) {
+                        // Try to extract error message using regex (more robust than JSON parsing)
+                        val messageRegex = """"message"\s*:\s*"([^"]+)"""".toRegex()
+                        val match = messageRegex.find(errorBody)
+                        if (match != null) {
+                            match.groupValues[1]
+                        } else {
+                            // Fallback: try JSON parsing
+                            try {
+                                val gson = com.google.gson.Gson()
+                                val json = gson.fromJson(errorBody, com.google.gson.JsonObject::class.java)
+                                val error = json.getAsJsonObject("error")
+                                error?.get("message")?.asString ?: "Failed to request switch to video"
+                            } catch (e2: Exception) {
+                                "Failed to request switch to video"
+                            }
+                        }
+                    } else {
+                        "Failed to request switch to video"
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing error response", e)
+                    response.message() ?: "Failed to request switch to video"
+                }
+                Log.e(TAG, "❌ Final error message: $errorMsg")
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ ❌ EXCEPTION DURING API CALL")
+            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ Exception: ${e.message}")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            e.printStackTrace()
             Result.failure(e)
         }
     }
@@ -2008,9 +2095,23 @@ class ApiDataRepository @Inject constructor(
         if (iso8601String.isNullOrBlank()) return System.currentTimeMillis()
         return try {
             // ISO8601 format: "2024-11-17T13:49:00.000000Z" or "2024-11-17T13:49:00+00:00"
-            val dateTimeString = iso8601String.replace("Z", "+00:00")
-            val formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
-            OffsetDateTime.parse(dateTimeString, formatter).toInstant().toEpochMilli()
+            // Use SimpleDateFormat which works on API 24
+            val dateTimeString = iso8601String.replace("Z", "+0000").replace(Regex("\\+\\d{2}:(\\d{2})$"), "+$1")
+            val formats = listOf(
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ", Locale.US),
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US),
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US)
+            )
+            formats.forEach { it.timeZone = TimeZone.getTimeZone("UTC") }
+            
+            for (format in formats) {
+                try {
+                    return format.parse(dateTimeString)?.time ?: System.currentTimeMillis()
+                } catch (_: Exception) {
+                    // Try next format
+                }
+            }
+            System.currentTimeMillis()
         } catch (_: Exception) {
             System.currentTimeMillis()
         }

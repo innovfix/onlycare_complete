@@ -79,9 +79,16 @@ sealed class WebSocketEvent {
 
     /**
      * Caller requested to switch this ongoing audio call to video
+     * ✅ NEW: Includes new video call details for seamless switch
      */
     data class SwitchToVideoRequested(
-        val callId: String,
+        val callId: String,  // Old audio call ID
+        val newCallId: String,  // ✅ NEW: Pre-created video call ID
+        val channelName: String,  // ✅ NEW: New video channel
+        val token: String,  // ✅ NEW: New video token
+        val appId: String,  // ✅ NEW: Agora app ID
+        val balanceTime: String,  // ✅ NEW: Balance time for video call
+        val receiverId: String,  // ✅ NEW: Receiver user ID
         val timestamp: Long = System.currentTimeMillis()
     ) : WebSocketEvent()
 
@@ -89,7 +96,9 @@ sealed class WebSocketEvent {
      * Receiver accepted switch-to-video request
      */
     data class SwitchToVideoAccepted(
-        val callId: String,
+        val callId: String,  // Old audio call ID (for backwards compatibility)
+        val oldCallId: String? = null,  // ✅ NEW: Old audio call ID (explicit)
+        val newCallId: String? = null,  // ✅ NEW: Pre-created video call ID
         val timestamp: Long = System.currentTimeMillis()
     ) : WebSocketEvent()
 
@@ -97,7 +106,8 @@ sealed class WebSocketEvent {
      * Receiver declined switch-to-video request
      */
     data class SwitchToVideoDeclined(
-        val callId: String,
+        val callId: String,  // Old audio call ID
+        val newCallId: String? = null,  // ✅ NEW: Pre-created video call ID to cancel
         val reason: String = "Not now",
         val timestamp: Long = System.currentTimeMillis()
     ) : WebSocketEvent()

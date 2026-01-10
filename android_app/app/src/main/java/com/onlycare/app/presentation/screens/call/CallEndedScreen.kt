@@ -136,32 +136,31 @@ fun CallEndedScreen(
                     )
                 }
                 
-                // ✅ Only show Coins Spent for MALE users (they pay for calls)
-                // Female users should NOT see this
-                if (isMaleUser) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Coins Spent:", color = TextSecondary)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Circle,
-                                contentDescription = null,
-                                tint = androidx.compose.ui.graphics.Color(0xFFFFC107),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                "$coinsSpent",
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
+                // ✅ COINS SPENT HIDDEN (as requested by user)
+                // if (isMaleUser) {
+                //     Spacer(modifier = Modifier.height(16.dp))
+                //     
+                //     Row(
+                //         modifier = Modifier.fillMaxWidth(),
+                //         horizontalArrangement = Arrangement.SpaceBetween
+                //     ) {
+                //         Text("Coins Spent:", color = TextSecondary)
+                //         Row(verticalAlignment = Alignment.CenterVertically) {
+                //             Icon(
+                //                 imageVector = Icons.Default.Circle,
+                //                 contentDescription = null,
+                //                 tint = androidx.compose.ui.graphics.Color(0xFFFFC107),
+                //                 modifier = Modifier.size(20.dp)
+                //             )
+                //             Spacer(modifier = Modifier.width(4.dp))
+                //             Text(
+                //                 "$coinsSpent",
+                //                 color = TextPrimary,
+                //                 fontWeight = FontWeight.Bold
+                //             )
+                //         }
+                //     }
+                // }
             }
             }
         }

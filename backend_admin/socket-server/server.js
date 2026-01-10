@@ -676,6 +676,119 @@ io.on('connection', (socket) => {
     });
     
     // =====================================
+    // EVENT: call:upgrade (Switch to Video)
+    // =====================================
+    socket.on('call:upgrade', (data, callback) => {
+        try {
+            const { oldCallId, newCallId, receiverId, senderId } = data;
+            
+            console.log('╔════════════════════════════════════════════════════════════');
+            console.log('║ 📹 SWITCH TO VIDEO REQUEST RECEIVED');
+            console.log('╠════════════════════════════════════════════════════════════');
+            console.log('║ Old Call ID:', oldCallId);
+            console.log('║ New Call ID:', newCallId);
+            console.log('║ Sender ID:', senderId);
+            console.log('║ Receiver ID:', receiverId);
+            console.log('╚════════════════════════════════════════════════════════════');
+            
+            // Find receiver's socket
+            const receiverSocketId = connectedUsers.get(receiverId);
+            
+            if (receiverSocketId) {
+                console.log('✅ Receiver is online, forwarding request...');
+                console.log(`📤 Forwarding balanceTime: '${data.balanceTime}'`);
+                console.log(`📤 Forwarding channelName: '${data.channelName}'`);
+                console.log(`📤 Forwarding token: '${data.token ? 'present' : 'missing'}'`);
+                console.log(`📤 Forwarding appId: '${data.appId}'`);
+                
+                // Forward ALL details to receiver (including balanceTime!)
+                io.to(receiverSocketId).emit('call:upgrade:request', {
+                    oldCallId,
+                    newCallId,
+                    senderId,
+                    balanceTime: data.balanceTime,  // ✅ Forward balance_time so female sees same timer!
+                    channelName: data.channelName,
+                    token: data.token,
+                    appId: data.appId,
+                    timestamp: Date.now()
+                });
+                
+                // Send acknowledgment to sender
+                if (callback) {
+                    callback({ success: true, message: 'Request sent to receiver' });
+                }
+            } else {
+                console.log('❌ Receiver is offline');
+                
+                if (callback) {
+                    callback({ success: false, message: 'Receiver is offline' });
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Error in call:upgrade:', error);
+            if (callback) {
+                callback({ success: false, message: 'Server error' });
+            }
+        }
+    });
+    
+    // =====================================
+    // EVENT: call:upgrade:response (Accept/Decline)
+    // =====================================
+    socket.on('call:upgrade:response', (data) => {
+        try {
+            const { oldCallId, newCallId, receiverId, senderId, accepted } = data;
+            
+            console.log('╔════════════════════════════════════════════════════════════');
+            console.log('║ 📹 SWITCH TO VIDEO RESPONSE RECEIVED');
+            console.log('╠════════════════════════════════════════════════════════════');
+            console.log('║ Old Call ID:', oldCallId);
+            console.log('║ New Call ID:', newCallId);
+            console.log('║ From User (accepter):', senderId);
+            console.log('║ To User (requester):', receiverId);
+            console.log('║ Accepted:', accepted);
+            console.log('╚════════════════════════════════════════════════════════════');
+            
+            // ✅ FIX: Notify the RECEIVER (original requester), not the sender (accepter)!
+            // receiverId = User 1 (original requester who needs notification)
+            // senderId = User 2 (accepter who just sent this response)
+            console.log('║ Looking up socket for receiverId:', receiverId);
+            console.log('║ Full ConnectedUsers map:', JSON.stringify(Array.from(connectedUsers.entries())));
+            console.log('║ Current socket.userId:', socket.userId);
+            console.log('║ Current socket.id:', socket.id);
+            
+            const requesterSocketId = connectedUsers.get(receiverId);
+            
+            console.log('║ Found socket ID for receiverId:', requesterSocketId);
+            console.log('║ Are they the same?:', requesterSocketId === socket.id);
+            
+            if (requesterSocketId) {
+                if (accepted) {
+                    console.log('✅ Receiver accepted, notifying original requester (receiverId)...');
+                    console.log('   Sending to socket:', requesterSocketId);
+                    io.to(requesterSocketId).emit('call:upgrade:accepted', {
+                        oldCallId,
+                        newCallId,
+                        timestamp: Date.now()
+                    });
+                } else {
+                    console.log('❌ Receiver declined, notifying original requester (receiverId)...');
+                    io.to(requesterSocketId).emit('call:upgrade:declined', {
+                        oldCallId,
+                        newCallId,
+                        reason: data.reason || 'Not now',
+                        timestamp: Date.now()
+                    });
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Error in call:upgrade:response:', error);
+        }
+    });
+    
+    // =====================================
     // EVENT: call:end
     // =====================================
     socket.on('call:end', (data) => {

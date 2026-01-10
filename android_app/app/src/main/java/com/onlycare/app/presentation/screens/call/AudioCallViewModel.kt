@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.onlycare.app.agora.AgoraEventListener
 import com.onlycare.app.agora.AgoraManager
+import com.onlycare.app.data.remote.dto.SwitchToVideoResponse
 import com.onlycare.app.data.repository.ApiDataRepository
 import com.onlycare.app.domain.model.CallType
 import com.onlycare.app.domain.model.User
@@ -45,11 +46,26 @@ data class AudioCallState(
     val giftSent: String? = null,  // Gift icon URL when gift is sent
     val wasEverConnected: Boolean = false,  // Track if call was ever connected (prevents false "never connected" state)
     val callAccepted: Boolean = false, // Caller-side: receiver accepted (so we can start Agora/mic)
+    
+    // ✅ HYBRID APPROACH: Track current call type (AUDIO → VIDEO switch)
+    val currentCallType: String = "AUDIO",  // "AUDIO" or "VIDEO" - starts as audio, can switch to video
+    val oldAudioCallId: String? = null,  // Track old audio call ID when switching to video
+    val remoteUid: Int = 0,  // ✅ Store remote user's Agora UID for video
+    
     // Switch to video flow
     val showSwitchToVideoDialog: Boolean = false,
     val switchToVideoDeclinedMessage: String? = null,
-    val shouldNavigateToVideo: Boolean = false,
-    // ✅ NEW: Guard against premature ending from stale state/jobs
+    val showSwitchToVideoRequestDialog: Boolean = false,  // Show dialog to receiver
+    
+    // Store pre-created video call details (for seamless switch)
+    val pendingVideoCallId: String? = null,
+    val pendingVideoChannel: String? = null,
+    val pendingVideoToken: String? = null,
+    val pendingVideoAppId: String? = null,
+    val pendingVideoBalanceTime: String? = null,
+    val pendingVideoReceiverId: String? = null,
+    
+    // Guard against premature ending from stale state/jobs
     val callReallyStarted: Boolean = false  // Only true after call is properly initialized and ready
 )
 
@@ -97,6 +113,7 @@ class AudioCallViewModel @Inject constructor(
     private var hasShownTimeoutError = false
     
     private var callStatusPollingJob: kotlinx.coroutines.Job? = null
+    private var remoteUid: Int = 0  // Store remote user's Agora UID for video setup
     private var isEndingCall = false  // Prevent double-calling endCall()
     
     // ✅ FIX: Track when call was initialized to prevent premature ending
@@ -239,27 +256,139 @@ class AudioCallViewModel @Inject constructor(
                     is WebSocketEvent.SwitchToVideoRequested -> {
                         // Receiver gets request while in audio call
                         if (event.callId == _state.value.callId) {
-                            Log.d(TAG, "📹 Switch-to-video request received for our call")
-                            _state.update { it.copy(showSwitchToVideoDialog = true) }
+                            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                            Log.e(TAG, "║ 📹 RECEIVER: Switch-to-Video Request RECEIVED")
+                            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                            Log.e(TAG, "║ Old Call ID: ${event.callId}")
+                            Log.e(TAG, "║ New Call ID: ${event.newCallId}")
+                            Log.e(TAG, "║ Balance Time: '${event.balanceTime}'")
+                            Log.e(TAG, "║ Balance Time is null: ${event.balanceTime == null}")
+                            Log.e(TAG, "║ Balance Time is empty: ${event.balanceTime?.isEmpty()}")
+                            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                            
+                            // ✅ Store new call details from WebSocket event
+                            _state.update { 
+                                it.copy(
+                                    showSwitchToVideoRequestDialog = true,
+                                    pendingVideoCallId = event.newCallId,
+                                    pendingVideoChannel = event.channelName,
+                                    pendingVideoToken = event.token,
+                                    pendingVideoAppId = event.appId,
+                                    pendingVideoBalanceTime = event.balanceTime,
+                                    pendingVideoReceiverId = event.receiverId
+                                )
+                            }
+                            
+                            Log.e(TAG, "✅ RECEIVER: Stored pendingVideoBalanceTime: '${_state.value.pendingVideoBalanceTime}'")
                         }
                     }
 
                     is WebSocketEvent.SwitchToVideoAccepted -> {
-                        // Caller receives receiver acceptance
-                        if (event.callId == _state.value.callId) {
-                            Log.d(TAG, "✅ Switch-to-video accepted for our call")
-                            _state.update { it.copy(shouldNavigateToVideo = true, showSwitchToVideoDialog = false) }
+                        Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                        Log.e(TAG, "║ 🎯 VIEWMODEL RECEIVED: SwitchToVideoAccepted Event")
+                        Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                        
+                        // Sender receives receiver acceptance
+                        val eventOldCallId = event.oldCallId
+                        val eventNewCallId = event.newCallId
+                        val stateOldCallId = _state.value.callId
+                        val statePendingVideoCallId = _state.value.pendingVideoCallId
+                        
+                        Log.e(TAG, "║ Event Old Call ID: $eventOldCallId")
+                        Log.e(TAG, "║ Event New Call ID: $eventNewCallId")
+                        Log.e(TAG, "║ State Current Call ID: $stateOldCallId")
+                        Log.e(TAG, "║ State Pending Video Call ID: $statePendingVideoCallId")
+                        Log.e(TAG, "║ ")
+                        
+                        val oldCallId = eventOldCallId ?: stateOldCallId
+                        val newCallId = statePendingVideoCallId
+                        
+                        Log.e(TAG, "║ Final Old Call ID: $oldCallId")
+                        Log.e(TAG, "║ Final New Call ID: $newCallId")
+                        Log.e(TAG, "║ ")
+                        Log.e(TAG, "║ Condition Check:")
+                        Log.e(TAG, "║   oldCallId == stateOldCallId: ${oldCallId == stateOldCallId}")
+                        Log.e(TAG, "║   newCallId != null: ${newCallId != null}")
+                        Log.e(TAG, "║   Overall: ${oldCallId == stateOldCallId && newCallId != null}")
+                        
+                        if (oldCallId == stateOldCallId && newCallId != null) {
+                            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                            Log.e(TAG, "║ ✅ CONDITIONS MET - SWITCHING TO VIDEO (SENDER SIDE)")
+                            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                            Log.e(TAG, "║ Old Call ID: $oldCallId")
+                            Log.e(TAG, "║ New Call ID: $newCallId")
+                            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                            
+                // ✅ Recalculate remaining time for VIDEO rates
+                val videoBalanceTime = _state.value.pendingVideoBalanceTime
+                Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ 🎯 🚹 MALE (SENDER): Setting Video Timer")
+                Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ Received balanceTime string: '$videoBalanceTime'")
+                
+                var newMaxDuration = TimeUtils.parseBalanceTime(videoBalanceTime)
+                Log.e(TAG, "║ After parseBalanceTime: $newMaxDuration seconds")
+                Log.e(TAG, "║ After formatTime: ${TimeUtils.formatTime(newMaxDuration)}")
+                
+                if (newMaxDuration <= 0) {
+                    newMaxDuration = 30 * 60
+                    Log.e(TAG, "║ ⚠️ Used fallback: 30min")
+                }
+                
+                Log.e(TAG, "║ 🚹 MALE WILL SHOW: ${TimeUtils.formatTime(newMaxDuration)}")
+                Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                            
+                            // ✅ HYBRID - Just change UI state, don't navigate!
+                            _state.update { 
+                                it.copy(
+                                    currentCallType = "VIDEO",  // ✅ Switch UI to video mode
+                                    callId = newCallId,  // ✅ Update to new call ID
+                                    oldAudioCallId = oldCallId,  // ✅ Remember old call for cleanup
+                                    switchToVideoDeclinedMessage = null,
+                                    duration = 0,  // ✅ Reset duration for new call
+                                    coinsSpent = 0,  // ✅ Reset coins for new call
+                                    maxCallDuration = newMaxDuration,  // ✅ Update for video rates
+                                    remainingTime = newMaxDuration,  // ✅ Update for video rates
+                                    isLowTime = TimeUtils.isLowTime(newMaxDuration)
+                                ) 
+                            }
+                            
+                            Log.e(TAG, "✅ SENDER: State updated with timer: ${TimeUtils.formatTime(newMaxDuration)}")
+                            Log.e(TAG, "✅ Enabling video in Agora session...")
+                            
+                            // ✅ Enable video in same Agora session
+                            agoraManager?.enableVideoInSameSession()
+                            
+                            Log.e(TAG, "✅ Video enabled in Agora")
+                            Log.e(TAG, "✅ Ending old audio call in background...")
+                            
+                            // ✅ End old audio call in background
+                            endOldAudioCallInBackground(oldCallId!!, _state.value.duration)
+                            
+                            Log.e(TAG, "✅ COMPLETE - UI should switch to VideoCallUI now!")
+                        } else {
+                            Log.e(TAG, "║ ❌ CONDITIONS NOT MET - NOT SWITCHING!")
+                            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
                         }
                     }
 
                     is WebSocketEvent.SwitchToVideoDeclined -> {
                         // Caller receives decline
                         if (event.callId == _state.value.callId) {
-                            Log.d(TAG, "🚫 Switch-to-video declined for our call: ${event.reason}")
+                            Log.d(TAG, "🚫 Switch-to-video declined by receiver: ${event.reason}")
+                            
+                            // ✅ Cancel the pre-created video call
+                            val newCallId = event.newCallId
+                            if (newCallId != null) {
+                                viewModelScope.launch {
+                                    repository.cancelCall(newCallId)
+                                }
+                            }
+                            
                             _state.update {
                                 it.copy(
-                                    showSwitchToVideoDialog = false,
-                                    switchToVideoDeclinedMessage = event.reason
+                                    showSwitchToVideoRequestDialog = false,
+                                    switchToVideoDeclinedMessage = event.reason ?: "User declined video call request"
                                 )
                             }
                         }
@@ -433,62 +562,229 @@ class AudioCallViewModel @Inject constructor(
     }
 
     fun requestSwitchToVideo() {
-        val callId = _state.value.callId ?: return
-        val otherId = remoteUserId
-        if (otherId.isNullOrBlank()) {
-            Log.w(TAG, "Cannot request switch-to-video: missing remoteUserId")
-            _state.update { it.copy(switchToVideoDeclinedMessage = "Unable to switch: missing remote user") }
+        val oldCallId = _state.value.callId ?: run {
+            Log.e(TAG, "❌ Cannot request switch: callId is null")
             return
         }
-
+        val otherId = remoteUserId ?: run {
+            Log.e(TAG, "❌ Cannot request switch: remoteUserId is null")
+            return
+        }
+        
         viewModelScope.launch {
-            if (!ensureWebSocketConnected()) {
-                Log.w(TAG, "Cannot request switch-to-video: WebSocket not connected (after wait)")
-                _state.update { it.copy(switchToVideoDeclinedMessage = "Connection issue. Please try again.") }
-                return@launch
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ 📹 SWITCH TO VIDEO REQUEST STARTED")
+            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ Old Call ID: $oldCallId")
+            Log.e(TAG, "║ Remote User ID: $otherId")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
+            // ✅ STEP 1: Backend creates new VIDEO call immediately
+            Log.d(TAG, "📤 Calling backend API to create new video call...")
+            val result = repository.requestSwitchToVideo(oldCallId)
+            
+            Log.e(TAG, "📡 Backend API response received")
+            
+            result.onSuccess { response: com.onlycare.app.data.remote.dto.SwitchToVideoResponse ->
+                Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ ✅ BACKEND API SUCCESS")
+                Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ Success: ${response.success}")
+                Log.e(TAG, "║ Message: ${response.message}")
+                Log.e(TAG, "║ Data present: ${response.data != null}")
+                Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                
+                val data = response.data
+                if (data == null) {
+                    Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                    Log.e(TAG, "║ ❌ ERROR: Missing new call details from backend")
+                    Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                    _state.update { 
+                        it.copy(switchToVideoDeclinedMessage = "Failed to create video call") 
+                    }
+                    return@launch
+                }
+                
+                Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ 📹 NEW VIDEO CALL DETAILS")
+                Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ Old Call ID: ${data.oldCallId}")
+                Log.e(TAG, "║ New Call ID: ${data.newCallId}")
+                Log.e(TAG, "║ Channel: ${data.channelName}")
+                Log.e(TAG, "║ App ID: ${data.agoraAppId}")
+                Log.e(TAG, "║ Balance Time: ${data.balanceTime}")
+                Log.e(TAG, "║ Receiver ID: ${data.receiverId}")
+                Log.e(TAG, "║ Balance Time (VIDEO from backend): '${data.balanceTime}'")
+                Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                
+                // ✅ CRITICAL FIX: Use backend's VIDEO balance_time for MALE
+                // This is what male will display on his screen
+                val videoMaxDuration = TimeUtils.parseBalanceTime(data.balanceTime)
+                val videoTimeFormatted = TimeUtils.formatTime(videoMaxDuration)
+                
+                Log.e(TAG, "✅ MALE will display: $videoTimeFormatted ($videoMaxDuration seconds)")
+                Log.e(TAG, "✅ FEMALE will receive: $videoTimeFormatted (EXACT SAME)")
+                
+                // ✅ STEP 2: Store new call details in state
+                _state.update {
+                    it.copy(
+                        pendingVideoCallId = data.newCallId,
+                        pendingVideoChannel = data.channelName,
+                        pendingVideoToken = data.agoraToken,
+                        pendingVideoAppId = data.agoraAppId,
+                        pendingVideoBalanceTime = data.balanceTime,  // ✅ Store ORIGINAL - will be parsed same way
+                        pendingVideoReceiverId = data.receiverId
+                    )
+                }
+                
+                Log.e(TAG, "✅ Stored balance_time: '${data.balanceTime}' (will be sent to female)")
+                
+                // ✅ STEP 3: Send WebSocket request with NEW call ID
+                Log.d(TAG, "🔌 Checking WebSocket connection...")
+                if (!ensureWebSocketConnected()) {
+                    Log.e(TAG, "❌ WebSocket not connected - cannot send request")
+                    _state.update { 
+                        it.copy(switchToVideoDeclinedMessage = "Connection issue. Please try again.") 
+                    }
+                    return@launch
+                }
+                
+                Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ 📤 SENDING WEBSOCKET REQUEST")
+                Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ Old Call ID: $oldCallId")
+                Log.e(TAG, "║ New Call ID: ${data.newCallId}")
+                Log.e(TAG, "║ Receiver ID: ${data.receiverId}")
+                Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                
+                // ✅ Send WebSocket request (WITHOUT balance_time - both sides get from backend API)
+                webSocketManager.requestSwitchToVideo(
+                    oldCallId = oldCallId,
+                    newCallId = data.newCallId,
+                    receiverId = data.receiverId,
+                    balanceTime = ""  // ✅ NOT NEEDED - both sides get from backend API
+                )
+                
+                Log.e(TAG, "✅ WebSocket request sent - waiting for receiver response...")
+                
+                // Show waiting state
+                _state.update { 
+                    it.copy(switchToVideoDeclinedMessage = "Waiting for response...") 
+                }
+                
+            }.onFailure { error: Throwable ->
+                Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ ❌ BACKEND API FAILED")
+                Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ Error: ${error.message}")
+                Log.e(TAG, "║ Stack trace:")
+                error.printStackTrace()
+                Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                _state.update { 
+                    it.copy(switchToVideoDeclinedMessage = error.message ?: "Cannot switch to video call") 
+                }
             }
-            Log.d(TAG, "📤 Requesting switch to video for callId=$callId receiverId=$otherId")
-            webSocketManager.requestSwitchToVideo(callId, otherId)
         }
     }
 
     fun acceptSwitchToVideo() {
-        val callId = _state.value.callId ?: return
-        val otherId = remoteUserId
-        if (otherId.isNullOrBlank()) {
-            Log.w(TAG, "Cannot accept switch-to-video: missing remoteUserId")
-            _state.update { it.copy(switchToVideoDeclinedMessage = "Unable to switch: missing remote user") }
-            return
-        }
+        val oldCallId = _state.value.callId ?: return
+        val newCallId = _state.value.pendingVideoCallId ?: return
+        val otherId = remoteUserId ?: return
+        
         viewModelScope.launch {
             if (!ensureWebSocketConnected()) {
-                Log.w(TAG, "Cannot accept switch-to-video: WebSocket not connected (after wait)")
-                _state.update { it.copy(switchToVideoDeclinedMessage = "Connection issue. Please try again.") }
+                _state.update { 
+                    it.copy(switchToVideoDeclinedMessage = "Connection issue. Please try again.") 
+                }
                 return@launch
             }
-            Log.d(TAG, "✅ Accepting switch to video for callId=$callId receiverId=$otherId")
-            webSocketManager.acceptSwitchToVideo(callId, otherId)
-            _state.update { it.copy(shouldNavigateToVideo = true, showSwitchToVideoDialog = false) }
+            
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ ✅ ACCEPTING SWITCH TO VIDEO (HYBRID APPROACH)")
+            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ Old Call ID: $oldCallId")
+            Log.e(TAG, "║ New Call ID: $newCallId")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
+            // ✅ STEP 1: Send WebSocket acceptance with new call ID
+            webSocketManager.acceptSwitchToVideo(oldCallId, newCallId, otherId)
+            
+            // ✅ STEP 2: Mark backend that new call is accepted (status PENDING → ONGOING)
+            // This also returns balance_time calculated based on MALE's coins!
+            val acceptResult = repository.acceptCall(newCallId)
+            
+            acceptResult.onSuccess { callData ->
+                Log.e(TAG, "✅ New video call accepted in backend")
+                
+                // ✅ Use balance_time from BACKEND (based on MALE's coins)
+                val videoBalanceTime = callData.balanceTime ?: ""
+                Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ 🎯 🚺 FEMALE (RECEIVER): Setting Video Timer FROM BACKEND")
+                Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                Log.e(TAG, "║ Backend returned balanceTime: '$videoBalanceTime'")
+                
+                var newMaxDuration = TimeUtils.parseBalanceTime(videoBalanceTime)
+                Log.e(TAG, "║ After parseBalanceTime: $newMaxDuration seconds")
+                Log.e(TAG, "║ After formatTime: ${TimeUtils.formatTime(newMaxDuration)}")
+                
+                if (newMaxDuration <= 0) {
+                    newMaxDuration = 30 * 60
+                    Log.e(TAG, "║ ⚠️ Used fallback: 30min")
+                }
+                
+                Log.e(TAG, "║ 🚺 FEMALE WILL SHOW: ${TimeUtils.formatTime(newMaxDuration)}")
+                Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                
+                // ✅ STEP 3: HYBRID - Just change UI state, don't navigate!
+                _state.update { 
+                    it.copy(
+                        currentCallType = "VIDEO",  // ✅ Switch UI to video mode
+                        callId = newCallId,  // ✅ Update to new call ID
+                        oldAudioCallId = oldCallId,  // ✅ Remember old call for cleanup
+                        showSwitchToVideoRequestDialog = false,
+                        duration = 0,  // ✅ Reset duration for new call
+                        coinsSpent = 0,  // ✅ Reset coins for new call
+                        maxCallDuration = newMaxDuration,  // ✅ Update for video rates
+                        remainingTime = newMaxDuration,  // ✅ Update for video rates
+                        isLowTime = TimeUtils.isLowTime(newMaxDuration)
+                    ) 
+                }
+                
+                Log.e(TAG, "✅ RECEIVER: State updated with timer: ${TimeUtils.formatTime(newMaxDuration)}")
+                
+                // ✅ STEP 4: Enable video in same Agora session
+                agoraManager?.enableVideoInSameSession()
+                
+                // ✅ STEP 5: End old audio call in background
+                endOldAudioCallInBackground(oldCallId, _state.value.duration)
+                
+                Log.e(TAG, "✅ Switched to video mode - UI will update automatically!")
+                
+            }.onFailure { error ->
+                Log.e(TAG, "❌ Failed to accept video call: ${error.message}")
+                _state.update { 
+                    it.copy(switchToVideoDeclinedMessage = "Failed to start video call") 
+                }
+            }
         }
     }
 
     fun declineSwitchToVideo() {
-        val callId = _state.value.callId ?: return
-        val otherId = remoteUserId
-        if (otherId.isNullOrBlank()) {
-            Log.w(TAG, "Cannot decline switch-to-video: missing remoteUserId")
-            _state.update { it.copy(showSwitchToVideoDialog = false) }
-            return
-        }
+        val oldCallId = _state.value.callId ?: return
+        val newCallId = _state.value.pendingVideoCallId ?: return
+        val otherId = remoteUserId ?: return
+        
         viewModelScope.launch {
-            if (!ensureWebSocketConnected()) {
-                Log.w(TAG, "Cannot decline switch-to-video: WebSocket not connected (after wait)")
-                _state.update { it.copy(showSwitchToVideoDialog = false, switchToVideoDeclinedMessage = "Connection issue. Please try again.") }
-                return@launch
+            // ✅ STEP 1: Send WebSocket decline
+            if (ensureWebSocketConnected()) {
+                webSocketManager.declineSwitchToVideo(oldCallId, newCallId, otherId, "Not now")
             }
-            Log.d(TAG, "🚫 Declining switch to video for callId=$callId receiverId=$otherId")
-            webSocketManager.declineSwitchToVideo(callId, otherId, "Not now")
-            _state.update { it.copy(showSwitchToVideoDialog = false) }
+            
+            // ✅ STEP 2: Cancel the pre-created video call in backend
+            repository.cancelCall(newCallId)
+            
+            _state.update { it.copy(showSwitchToVideoRequestDialog = false) }
         }
     }
 
@@ -498,10 +794,6 @@ class AudioCallViewModel @Inject constructor(
 
     fun clearSwitchToVideoDeclinedMessage() {
         _state.update { it.copy(switchToVideoDeclinedMessage = null) }
-    }
-
-    fun resetNavigateToVideoFlag() {
-        _state.update { it.copy(shouldNavigateToVideo = false) }
     }
 
     fun clearSwitchToVideoRequestUi() {
@@ -605,7 +897,13 @@ class AudioCallViewModel @Inject constructor(
                 giftSent = null,
                 showSwitchToVideoDialog = false,
                 switchToVideoDeclinedMessage = null,
-                shouldNavigateToVideo = false,
+                showSwitchToVideoRequestDialog = false,
+                pendingVideoCallId = null,
+                pendingVideoChannel = null,
+                pendingVideoToken = null,
+                pendingVideoAppId = null,
+                pendingVideoBalanceTime = null,
+                pendingVideoReceiverId = null,
                 callReallyStarted = false  // ✅ CRITICAL: Reset this - will be set to true in initializeAndJoinCall
             )
         }
@@ -760,6 +1058,11 @@ class AudioCallViewModel @Inject constructor(
         _state.update { it.copy(isSpeakerOn = newSpeakerState) }
         agoraManager?.enableSpeaker(newSpeakerState)
     }
+    
+    /**
+     * Get AgoraManager for direct access from UI
+     */
+    fun getAgoraManager() = agoraManager
     
     /**
      * Initialize Agora and join audio channel
@@ -944,11 +1247,25 @@ class AudioCallViewModel @Inject constructor(
                 }
                 
                 override fun onUserJoined(uid: Int) {
-                    Log.i(TAG, "👤 Remote user joined: $uid")
+                    Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+                    Log.e(TAG, "║ 👤 REMOTE USER JOINED AGORA CHANNEL")
+                    Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+                    Log.e(TAG, "║ Remote UID: $uid")
+                    Log.e(TAG, "║ Current call type: ${_state.value.currentCallType}")
+                    Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                    
                     // Cancel timeout since user joined successfully
                     connectionTimeoutJob?.cancel()
                     hasShownTimeoutError = false
-                    _state.update { it.copy(remoteUserJoined = true, wasEverConnected = true, waitingForReceiver = false, error = null) }
+                    
+                    // Store the remote UID in STATE (not just local variable)
+                    _state.update { it.copy(
+                        remoteUserJoined = true, 
+                        wasEverConnected = true, 
+                        waitingForReceiver = false, 
+                        error = null,
+                        remoteUid = uid  // ✅ Store in state for VideoCallUI
+                    ) }
                 }
                 
                 override fun onUserOffline(uid: Int, reason: Int) {
@@ -1156,8 +1473,59 @@ class AudioCallViewModel @Inject constructor(
         }
     }
     
+    /**
+     * End old audio call in background when switching to video
+     * This is called after navigation to video call has started
+     */
+    /**
+     * End old audio call in background when switching to video
+     * ✅ HYBRID APPROACH: Don't leave Agora channel (we're staying in same session!)
+     */
+    private fun endOldAudioCallInBackground(oldCallId: String, duration: Int) {
+        viewModelScope.launch {
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ 🧹 ENDING OLD AUDIO CALL IN BACKGROUND")
+            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ Old Call ID: $oldCallId")
+            Log.e(TAG, "║ Duration: $duration seconds")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
+            // ✅ DON'T leave Agora channel - we're staying in same session!
+            // agoraManager?.leaveChannel()  // ❌ Don't do this!
+            
+            // ✅ End call in backend (for billing)
+            val result = repository.endCall(oldCallId, duration)
+            result.onSuccess {
+                Log.e(TAG, "✅ Old audio call ended in backend (for billing)")
+            }.onFailure { error ->
+                Log.w(TAG, "⚠️ Failed to end old audio call: ${error.message}")
+            }
+        }
+    }
+    
     override fun onCleared() {
         super.onCleared()
+        
+        // ✅ If switching to video, end old call silently in background
+        if (_state.value.oldAudioCallId != null && !_state.value.callId.isNullOrEmpty()) {
+            val oldCallId = _state.value.oldAudioCallId
+            val duration = _state.value.duration
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ 🧹 CLEANUP: Ending old audio call in background")
+            Log.e(TAG, "║ Old Call ID: $oldCallId")
+            Log.e(TAG, "║ Duration: $duration")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
+            viewModelScope.launch {
+                try {
+                    repository.endCall(oldCallId!!, duration)
+                    Log.d(TAG, "✅ Old audio call ended successfully in background")
+                } catch (e: Exception) {
+                    Log.w(TAG, "⚠️ Could not end old call (non-critical): ${e.message}")
+                }
+            }
+        }
+        
         // Cancel timeout job
         connectionTimeoutJob?.cancel()
         // Cancel polling job

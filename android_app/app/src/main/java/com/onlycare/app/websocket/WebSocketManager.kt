@@ -256,6 +256,17 @@ class WebSocketManager @Inject constructor(
             on("call:upgrade:response") { args ->
                 handleUpgradeSwitchToVideoResponse(args.getOrNull(0) as? JSONObject)
             }
+            // ✅ NEW: Server now uses call:upgrade events
+            on("call:upgrade:request") { args ->
+                handleSwitchToVideoRequested(args.getOrNull(0) as? JSONObject)
+            }
+            on("call:upgrade:accepted") { args ->
+                handleSwitchToVideoAccepted(args.getOrNull(0) as? JSONObject)
+            }
+            on("call:upgrade:declined") { args ->
+                handleSwitchToVideoDeclined(args.getOrNull(0) as? JSONObject)
+            }
+            
             // Backward-compatible legacy events
             on("call:switch_video_request") { args ->
                 handleSwitchToVideoRequested(args.getOrNull(0) as? JSONObject)
@@ -478,11 +489,30 @@ class WebSocketManager @Inject constructor(
     private fun handleSwitchToVideoRequested(data: JSONObject?) {
         try {
             if (data == null) return
-            val callId = data.optString("callId", "").ifBlank { data.optString("call_id", "") }
+            val oldCallId = data.optString("oldCallId", "").ifBlank { data.optString("callId", "").ifBlank { data.optString("call_id", "") } }
+            val newCallId = data.optString("newCallId", "")
+            val channelName = data.optString("channelName", "")
+            val token = data.optString("token", "")
+            val appId = data.optString("appId", "")
+            val balanceTime = data.optString("balanceTime", "")
+            val receiverId = data.optString("receiverId", "")
             val timestamp = data.optLong("timestamp", System.currentTimeMillis())
-            if (callId.isBlank()) return
-            Log.d(TAG, "📹 Switch-to-video requested for callId=$callId")
-            _callEvents.tryEmit(WebSocketEvent.SwitchToVideoRequested(callId = callId, timestamp = timestamp))
+            
+            if (oldCallId.isBlank() || newCallId.isBlank()) return
+            
+            Log.d(TAG, "📹 Switch-to-video requested - oldCallId=$oldCallId, newCallId=$newCallId")
+            _callEvents.tryEmit(
+                WebSocketEvent.SwitchToVideoRequested(
+                    callId = oldCallId,
+                    newCallId = newCallId,
+                    channelName = channelName,
+                    token = token,
+                    appId = appId,
+                    balanceTime = balanceTime,
+                    receiverId = receiverId,
+                    timestamp = timestamp
+                )
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing switch_video_request", e)
         }
@@ -490,26 +520,54 @@ class WebSocketManager @Inject constructor(
 
     private fun handleSwitchToVideoAccepted(data: JSONObject?) {
         try {
-            if (data == null) return
-            val callId = data.optString("callId", "").ifBlank { data.optString("call_id", "") }
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ 📥 RECEIVED: Switch-to-Video ACCEPTED EVENT (SENDER SIDE)")
+            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+            
+            if (data == null) {
+                Log.e(TAG, "║ ❌ DATA IS NULL!")
+                Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                return
+            }
+            
+            Log.e(TAG, "║ Raw JSON: ${data.toString()}")
+            
+            val oldCallId = data.optString("oldCallId", "").ifBlank { data.optString("callId", "").ifBlank { data.optString("call_id", "") } }
+            val newCallId = data.optString("newCallId", "")
             val timestamp = data.optLong("timestamp", System.currentTimeMillis())
-            if (callId.isBlank()) return
-            Log.d(TAG, "✅ Switch-to-video accepted for callId=$callId")
-            _callEvents.tryEmit(WebSocketEvent.SwitchToVideoAccepted(callId = callId, timestamp = timestamp))
+            
+            Log.e(TAG, "║ Old Call ID: $oldCallId")
+            Log.e(TAG, "║ New Call ID: $newCallId")
+            Log.e(TAG, "║ Timestamp: $timestamp")
+            
+            if (oldCallId.isBlank()) {
+                Log.e(TAG, "║ ❌ OLD CALL ID IS BLANK!")
+                Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+                return
+            }
+            
+            Log.e(TAG, "║ ✅ EMITTING WebSocketEvent.SwitchToVideoAccepted")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
+            _callEvents.tryEmit(WebSocketEvent.SwitchToVideoAccepted(callId = oldCallId, newCallId = newCallId, timestamp = timestamp))
+            
+            Log.e(TAG, "✅ Event emitted successfully to ViewModel")
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing switch_video_accept", e)
+            Log.e(TAG, "❌ Error parsing switch_video_accept", e)
+            e.printStackTrace()
         }
     }
 
     private fun handleSwitchToVideoDeclined(data: JSONObject?) {
         try {
             if (data == null) return
-            val callId = data.optString("callId", "").ifBlank { data.optString("call_id", "") }
+            val oldCallId = data.optString("oldCallId", "").ifBlank { data.optString("callId", "").ifBlank { data.optString("call_id", "") } }
+            val newCallId = data.optString("newCallId", "")
             val reason = data.optString("reason", "Not now")
             val timestamp = data.optLong("timestamp", System.currentTimeMillis())
-            if (callId.isBlank()) return
-            Log.d(TAG, "🚫 Switch-to-video declined for callId=$callId reason=$reason")
-            _callEvents.tryEmit(WebSocketEvent.SwitchToVideoDeclined(callId = callId, reason = reason, timestamp = timestamp))
+            if (oldCallId.isBlank()) return
+            Log.d(TAG, "🚫 Switch-to-video declined - oldCallId=$oldCallId, newCallId=$newCallId, reason=$reason")
+            _callEvents.tryEmit(WebSocketEvent.SwitchToVideoDeclined(callId = oldCallId, newCallId = newCallId, reason = reason, timestamp = timestamp))
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing switch_video_decline", e)
         }
@@ -550,13 +608,15 @@ class WebSocketManager @Inject constructor(
                 else -> null
             }
 
+            val newCallId = data.optString("newCallId", "")
+            
             if (accepted == true) {
-                Log.d(TAG, "✅ Upgrade (switch-to-video) accepted for callId=$callId")
-                _callEvents.tryEmit(WebSocketEvent.SwitchToVideoAccepted(callId = callId, timestamp = timestamp))
+                Log.d(TAG, "✅ Upgrade (switch-to-video) accepted - oldCallId=$callId, newCallId=$newCallId")
+                _callEvents.tryEmit(WebSocketEvent.SwitchToVideoAccepted(callId = callId, newCallId = newCallId, timestamp = timestamp))
             } else {
                 val reason = data.optString("reason", "Not now")
-                Log.d(TAG, "🚫 Upgrade (switch-to-video) declined for callId=$callId reason=$reason accepted=$accepted")
-                _callEvents.tryEmit(WebSocketEvent.SwitchToVideoDeclined(callId = callId, reason = reason, timestamp = timestamp))
+                Log.d(TAG, "🚫 Upgrade (switch-to-video) declined - oldCallId=$callId, newCallId=$newCallId, reason=$reason accepted=$accepted")
+                _callEvents.tryEmit(WebSocketEvent.SwitchToVideoDeclined(callId = callId, newCallId = newCallId, reason = reason, timestamp = timestamp))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing call:upgrade:response", e)
@@ -803,21 +863,42 @@ class WebSocketManager @Inject constructor(
     // =============================
     // Switch Audio -> Video (Outgoing)
     // =============================
-    fun requestSwitchToVideo(callId: String, receiverId: String) {
+    fun requestSwitchToVideo(
+        oldCallId: String, 
+        newCallId: String, 
+        receiverId: String,
+        balanceTime: String? = null,  // ✅ NEW: Pass balance_time so female sees same timer
+        channelName: String? = null,
+        agoraToken: String? = null,
+        appId: String? = null
+    ) {
         if (socket?.connected() != true) {
             Log.w(TAG, "WebSocket not connected, cannot request switch-to-video")
             return
         }
         try {
             val data = JSONObject().apply {
-                put("callId", callId)
-                // Important for server routing (receiver must receive the event)
+                put("oldCallId", oldCallId)  // ✅ Old audio call ID
+                put("newCallId", newCallId)  // ✅ New video call ID
+                put("callId", oldCallId)  // Keep for backwards compatibility
                 put("receiverId", receiverId)
                 put("senderId", sessionManager.getUserId())
                 put("timestamp", System.currentTimeMillis())
+                // ✅ NEW: Include all call details so female gets same timer
+                balanceTime?.let { put("balanceTime", it) }
+                channelName?.let { put("channelName", it) }
+                agoraToken?.let { put("token", it) }
+                appId?.let { put("appId", it) }
             }
             // New backend expects call:upgrade (aliases: call:switchToVideo / call:switch_to_video)
-            Log.d(TAG, "📤 Emitting call:upgrade for callId=$callId")
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ 📤 Emitting call:upgrade")
+            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ oldCallId: $oldCallId")
+            Log.e(TAG, "║ newCallId: $newCallId")
+            Log.e(TAG, "║ balanceTime: '$balanceTime'")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
             socket?.emit("call:upgrade", data, Ack { args ->
                 val response = args.getOrNull(0) as? JSONObject
                 Log.d(TAG, "📥 Ack call:upgrade response=${response?.toString() ?: args.joinToString()}")
@@ -827,21 +908,33 @@ class WebSocketManager @Inject constructor(
         }
     }
 
-    fun acceptSwitchToVideo(callId: String, receiverId: String) {
+    fun acceptSwitchToVideo(oldCallId: String, newCallId: String, receiverId: String) {
         if (socket?.connected() != true) {
             Log.w(TAG, "WebSocket not connected, cannot accept switch-to-video")
             return
         }
         try {
+            val myUserId = sessionManager.getUserId()
+            
+            Log.e(TAG, "╔════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ 📤 SENDING: call:upgrade:response (ACCEPTER SIDE)")
+            Log.e(TAG, "╠════════════════════════════════════════════════════════════")
+            Log.e(TAG, "║ My User ID (accepter): $myUserId")
+            Log.e(TAG, "║ Receiver ID (original requester): $receiverId")
+            Log.e(TAG, "║ Old Call ID: $oldCallId")
+            Log.e(TAG, "║ New Call ID: $newCallId")
+            Log.e(TAG, "╚════════════════════════════════════════════════════════════")
+            
             val data = JSONObject().apply {
-                put("callId", callId)
-                // Important for server routing back to the other peer
-                put("receiverId", receiverId)
-                put("senderId", sessionManager.getUserId())
+                put("oldCallId", oldCallId)  // ✅ Old audio call ID
+                put("newCallId", newCallId)  // ✅ New video call ID
+                put("callId", oldCallId)  // Keep for backwards compatibility
+                put("receiverId", receiverId)  // ✅ Original requester who needs notification
+                put("senderId", myUserId)  // ✅ Current user (accepter)
                 put("accepted", true)
                 put("timestamp", System.currentTimeMillis())
             }
-            Log.d(TAG, "📤 Emitting call:upgrade:response (accepted) for callId=$callId")
+            Log.e(TAG, "📤 Emitting call:upgrade:response with data: ${data.toString()}")
             socket?.emit("call:upgrade:response", data, Ack { args ->
                 val response = args.getOrNull(0) as? JSONObject
                 Log.d(TAG, "📥 Ack call:upgrade:response response=${response?.toString() ?: args.joinToString()}")
@@ -851,22 +944,23 @@ class WebSocketManager @Inject constructor(
         }
     }
 
-    fun declineSwitchToVideo(callId: String, receiverId: String, reason: String = "Not now") {
+    fun declineSwitchToVideo(oldCallId: String, newCallId: String, receiverId: String, reason: String = "Not now") {
         if (socket?.connected() != true) {
             Log.w(TAG, "WebSocket not connected, cannot decline switch-to-video")
             return
         }
         try {
             val data = JSONObject().apply {
-                put("callId", callId)
-                // Important for server routing back to the other peer
+                put("oldCallId", oldCallId)  // ✅ Old audio call ID
+                put("newCallId", newCallId)  // ✅ New video call ID
+                put("callId", oldCallId)  // Keep for backwards compatibility
                 put("receiverId", receiverId)
                 put("senderId", sessionManager.getUserId())
                 put("accepted", false)
                 put("reason", reason)
                 put("timestamp", System.currentTimeMillis())
             }
-            Log.d(TAG, "📤 Emitting call:upgrade:response (declined) for callId=$callId")
+            Log.d(TAG, "📤 Emitting call:upgrade:response (declined) - oldCallId=$oldCallId, newCallId=$newCallId")
             socket?.emit("call:upgrade:response", data, Ack { args ->
                 val response = args.getOrNull(0) as? JSONObject
                 Log.d(TAG, "📥 Ack call:upgrade:response response=${response?.toString() ?: args.joinToString()}")
