@@ -99,6 +99,29 @@ class MainActivity : FragmentActivity() {
     private var hasShownBestOffersThisSession = false // Track if bottom sheet was shown in this session
     
     // Broadcast receiver for call acceptance
+    // Truecaller login broadcast receiver (registered in MainActivity to persist)
+    private val truecallerAuthReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.onlycare.app.TRUECALLER_AUTH_CODE") {
+                val authCode = intent.getStringExtra("authorization_code")
+                Log.d("MainActivity", "========================================")
+                Log.d("MainActivity", "📨 Truecaller auth code received in MainActivity")
+                Log.d("MainActivity", "  - Authorization Code: ${authCode?.take(20)}...")
+                Log.d("MainActivity", "  - Forwarding to LoginScreen via shared state...")
+                Log.d("MainActivity", "========================================")
+                
+                // Store in shared preferences or use a callback mechanism
+                // For now, we'll use a static variable or shared preferences
+                // The LoginScreen will check for this value
+                if (authCode != null) {
+                    val prefs = context?.getSharedPreferences("truecaller_auth", Context.MODE_PRIVATE)
+                    prefs?.edit()?.putString("authorization_code", authCode)?.apply()
+                    Log.d("MainActivity", "✅ Authorization code saved to shared preferences")
+                }
+            }
+        }
+    }
+    
     private val callAcceptedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "com.onlycare.app.CALL_ACCEPTED") {
@@ -193,6 +216,14 @@ class MainActivity : FragmentActivity() {
             registerReceiver(callAcceptedReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(callAcceptedReceiver, filter)
+        }
+        
+        // Register Truecaller auth code receiver
+        val truecallerFilter = IntentFilter("com.onlycare.app.TRUECALLER_AUTH_CODE")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(truecallerAuthReceiver, truecallerFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(truecallerAuthReceiver, truecallerFilter)
         }
         Log.d("MainActivity", "✅ Broadcast receiver registered for call acceptance")
         
@@ -430,12 +461,89 @@ class MainActivity : FragmentActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        Log.d("MainActivity", "========================================")
+        Log.d("MainActivity", "📥 onActivityResult called")
+        Log.d("MainActivity", "  - Request Code: $requestCode")
+        Log.d("MainActivity", "  - Result Code: $resultCode (${if (resultCode == -1) "RESULT_OK" else if (resultCode == 0) "RESULT_CANCELED" else "OTHER"})")
+        Log.d("MainActivity", "  - Data: ${data?.extras?.keySet()}")
+        
+        // Check if this is a Truecaller OAuth result (request code 100)
+        if (requestCode == 100 && data != null && data.extras != null) {
+            val responseExtra = data.extras!!.get("OAUTH_SDK_RESPONSE_EXTRA")
+            if (responseExtra != null) {
+                Log.d("MainActivity", "  - Truecaller Response Extra: $responseExtra")
+                Log.d("MainActivity", "  - Response Type: ${responseExtra.javaClass.simpleName}")
+                
+                val responseString = responseExtra.toString()
+                
+                // Check if it's a failure response with InvalidPartnerError
+                if (responseString.contains("InvalidPartnerError")) {
+                    Log.e("MainActivity", "========================================")
+                    Log.e("MainActivity", "❌ Truecaller InvalidPartnerError detected!")
+                    Log.e("MainActivity", "  This means:")
+                    Log.e("MainActivity", "  1. Client ID might be incorrect")
+                    Log.e("MainActivity", "  2. Package name doesn't match Truecaller Developer Portal")
+                    Log.e("MainActivity", "  3. SHA-256 fingerprint doesn't match")
+                    Log.e("MainActivity", "  4. App signature doesn't match")
+                    Log.e("MainActivity", "========================================")
+                    
+                    // Show user-friendly error
+                    android.widget.Toast.makeText(
+                        this,
+                        "Truecaller configuration error. Please check:\n• Client ID\n• Package name\n• SHA-256 fingerprint\n\nUsing OTP instead.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+                // Check if it's a success response with authorization code
+                else if (responseString.contains("authorizationCode=") && resultCode == -1) {
+                    Log.d("MainActivity", "========================================")
+                    Log.d("MainActivity", "✅ Truecaller Success Response detected!")
+                    Log.d("MainActivity", "  - Extracting authorization code from response...")
+                    
+                    // Extract authorization code using regex
+                    // Pattern matches: authorizationCode=CODE_VALUE (where CODE_VALUE can contain =, -, _, etc.)
+                    val authCodePattern = Regex("authorizationCode=([^,\\s)]+)")
+                    val match = authCodePattern.find(responseString)
+                    val authorizationCode = match?.groupValues?.get(1)?.trim()
+                    
+                    if (authorizationCode != null) {
+                        Log.d("MainActivity", "  - Authorization Code extracted: ${authorizationCode.take(20)}...")
+                        
+                        // Save directly to SharedPreferences (no broadcast needed since we're in the same Activity)
+                        val prefs = getSharedPreferences("truecaller_auth", Context.MODE_PRIVATE)
+                        prefs.edit().putString("authorization_code", authorizationCode).apply()
+                        Log.d("MainActivity", "========================================")
+                        Log.d("MainActivity", "✅ Authorization code saved to SharedPreferences")
+                        Log.d("MainActivity", "  - LoginScreen will poll and pick it up")
+                        Log.d("MainActivity", "========================================")
+                    } else {
+                        Log.e("MainActivity", "❌ Failed to extract authorization code from response")
+                    }
+                    Log.d("MainActivity", "========================================")
+                }
+            }
+        }
+        
+        if (data != null && data.extras != null) {
+            Log.d("MainActivity", "  - Extras details:")
+            for (key in data.extras!!.keySet()) {
+                Log.d("MainActivity", "    - $key: ${data.extras!!.get(key)}")
+            }
+        }
+        Log.d("MainActivity", "========================================")
         try {
             // Truecaller OAuth may use different request codes than SHARE_PROFILE_REQUEST_CODE.
             // Forward all activity results to Truecaller SDK (it will ignore unrelated ones).
+            Log.d("MainActivity", "🔄 Forwarding activity result to Truecaller SDK...")
+            Log.d("MainActivity", "  - Request Code: $requestCode (Truecaller uses 100)")
             TcSdk.getInstance().onActivityResultObtained(this, requestCode, resultCode, data)
+            Log.d("MainActivity", "✅ Activity result forwarded to Truecaller SDK")
+            Log.d("MainActivity", "  - If callback doesn't trigger, SDK might not be initialized with callback")
         } catch (t: Throwable) {
-            // Ignore if Truecaller SDK is not available/initialized
+            Log.e("MainActivity", "❌ Error forwarding activity result to Truecaller SDK", t)
+            Log.e("MainActivity", "  - Exception: ${t.javaClass.simpleName}")
+            Log.e("MainActivity", "  - Message: ${t.message}")
+            t.printStackTrace()
         }
     }
     
@@ -495,12 +603,18 @@ class MainActivity : FragmentActivity() {
         webSocketManager.disconnect()
         Log.d("MainActivity", "🔌 WebSocket disconnected")
         
-        // Unregister broadcast receiver
+        // Unregister broadcast receivers
         try {
             unregisterReceiver(callAcceptedReceiver)
-            Log.d("MainActivity", "✅ Broadcast receiver unregistered")
+            Log.d("MainActivity", "✅ Call acceptance receiver unregistered")
         } catch (e: Exception) {
-            Log.e("MainActivity", "Error unregistering receiver", e)
+            Log.e("MainActivity", "Error unregistering call receiver", e)
+        }
+        try {
+            unregisterReceiver(truecallerAuthReceiver)
+            Log.d("MainActivity", "✅ Truecaller auth receiver unregistered")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error unregistering Truecaller receiver", e)
         }
 
         femaleIncomingCallJob?.cancel()

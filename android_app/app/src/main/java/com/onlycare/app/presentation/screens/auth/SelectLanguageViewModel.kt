@@ -70,12 +70,27 @@ class SelectLanguageViewModel @Inject constructor(
             return
         }
         
+        // Validate avatar is selected
+        val avatar = sessionManager.getProfileImage()
+        if (avatar.isBlank()) {
+            android.util.Log.e("SelectLanguageVM", "❌ Avatar not selected! Cannot register.")
+            onFailure("Please select an avatar first")
+            return
+        }
+        
         _state.update { it.copy(isRegistering = true, registrationError = null) }
         
         viewModelScope.launch {
             val phone = sessionManager.getPhone()
-            val avatar = sessionManager.getProfileImage()
             val language = sessionManager.getLanguage() ?: Language.ENGLISH
+            
+            android.util.Log.d("SelectLanguageVM", "========================================")
+            android.util.Log.d("SelectLanguageVM", "📤 Registering Male User")
+            android.util.Log.d("SelectLanguageVM", "  - Phone: $phone")
+            android.util.Log.d("SelectLanguageVM", "  - Gender: $gender")
+            android.util.Log.d("SelectLanguageVM", "  - Avatar ID: $avatar")
+            android.util.Log.d("SelectLanguageVM", "  - Language: $language")
+            android.util.Log.d("SelectLanguageVM", "========================================")
             
             // Get referral code from session manager if available
             val referralCode = sessionManager.getReferralCode()

@@ -197,10 +197,20 @@ class LoginViewModel @Inject constructor(
                     else -> false
                 }
 
-                // Prefer phone from user, then fallback to userNumber
-                val resolvedPhone = (user?.phone?.filter { it.isDigit() }?.takeLast(10))
+                // Prefer phone from response root, then user object, then fallback to userNumber
+                val resolvedPhone = (resp.phone?.filter { it.isDigit() }?.takeLast(10))
+                    ?: (user?.phone?.filter { it.isDigit() }?.takeLast(10))
                     ?: (resp.userNumber?.filter { it.isDigit() }?.takeLast(10))
                     ?: _state.value.phone
+                
+                android.util.Log.d("LoginViewModel", "========================================")
+                android.util.Log.d("LoginViewModel", "📞 Truecaller Phone Resolution")
+                android.util.Log.d("LoginViewModel", "  - resp.phone: ${resp.phone}")
+                android.util.Log.d("LoginViewModel", "  - user?.phone: ${user?.phone}")
+                android.util.Log.d("LoginViewModel", "  - resp.userNumber: ${resp.userNumber}")
+                android.util.Log.d("LoginViewModel", "  - _state.value.phone: ${_state.value.phone}")
+                android.util.Log.d("LoginViewModel", "  - Resolved phone: $resolvedPhone")
+                android.util.Log.d("LoginViewModel", "========================================")
 
                 if (isRegistered && user != null) {
                     // Existing user: save full session
@@ -244,10 +254,11 @@ class LoginViewModel @Inject constructor(
                 }
             }.onFailure { error ->
                 Log.e("LoginViewModel", "Truecaller login failed: ${error.message}", error)
+                // Don't show Truecaller errors on UI - just log them and let user try OTP normally
                 _state.update {
                     it.copy(
                         isLoading = false,
-                        phoneError = error.message ?: "Truecaller login failed. Please try OTP.",
+                        // phoneError removed - don't show Truecaller errors on screen
                         truecallerLoginSuccess = false
                     )
                 }

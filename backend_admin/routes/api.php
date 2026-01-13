@@ -53,6 +53,9 @@ Route::prefix('v1')->group(function () {
     // ========================================
     // 1. AUTHENTICATION APIs (Public Routes)
     // ========================================
+    // Truecaller OAuth login (outside auth prefix for compatibility)
+    Route::post('/login', [AuthController::class, 'login']); // Truecaller login endpoint
+    
     Route::prefix('auth')->group(function () {
         Route::post('/send-otp', [AuthController::class, 'sendOtp']);
         Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);

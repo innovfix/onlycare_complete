@@ -103,7 +103,11 @@ data class TruecallerLoginResponse(
     val accessToken: String? = null,
 
     @SerializedName("user")
-    val user: UserDto? = null
+    val user: UserDto? = null,
+    
+    // Phone number (returned by Truecaller login endpoint)
+    @SerializedName("phone")
+    val phone: String? = null
 )
 
 /**

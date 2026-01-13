@@ -16,7 +16,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,9 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
@@ -59,10 +57,8 @@ import com.truecaller.android.sdk.oAuth.TcOAuthData
 import com.truecaller.android.sdk.oAuth.TcOAuthError
 import com.truecaller.android.sdk.oAuth.TcSdk
 import com.truecaller.android.sdk.oAuth.TcSdkOptions
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.math.BigInteger
 import java.security.SecureRandom
 
@@ -117,53 +113,133 @@ fun LoginScreen(
         }
     }
 
+    // Listen for Truecaller authorization code from MainActivity (via SharedPreferences)
+    LaunchedEffect(truecallerCodeVerifier) {
+        // Only start polling if code verifier is available (set when Truecaller button clicked)
+        if (truecallerCodeVerifier.isNullOrBlank()) {
+            Log.d(TAG, "⏸️ Code verifier not set yet, waiting for Truecaller button click...")
+            return@LaunchedEffect
+        }
+        
+        Log.d(TAG, "🔄 Started polling for Truecaller auth code from SharedPreferences")
+        Log.d(TAG, "  - Code Verifier: ${truecallerCodeVerifier?.take(20)}...")
+        
+        // Poll SharedPreferences for auth code (MainActivity saves it there)
+        while (true) {
+            delay(500) // Check every 500ms
+            
+            val prefs = context.getSharedPreferences("truecaller_auth", android.content.Context.MODE_PRIVATE)
+            val authCode = prefs.getString("authorization_code", null)
+            
+            if (!authCode.isNullOrBlank()) {
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "✅ Found Truecaller auth code in SharedPreferences!")
+                Log.d(TAG, "  - Authorization Code: ${authCode.take(20)}...")
+                Log.d(TAG, "  - Code Verifier: ${truecallerCodeVerifier?.take(20)}...")
+                Log.d(TAG, "========================================")
+                
+                // Clear the stored code
+                prefs.edit().remove("authorization_code").apply()
+                
+                // Trigger login
+                Log.d(TAG, "🔄 Triggering Truecaller login with extracted code...")
+                viewModel.loginWithTruecaller(code = authCode, codeVerifier = truecallerCodeVerifier!!)
+                
+                // Stop polling once we've processed it
+                break
+            }
+        }
+    }
+
     val tcOAuthCallback = remember {
         object : TcOAuthCallback {
             override fun onSuccess(tcOAuthData: TcOAuthData) {
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "✅ Truecaller onSuccess callback triggered!")
+                Log.d(TAG, "  - Authorization Code: ${tcOAuthData.authorizationCode?.take(20)}...")
+                Log.d(TAG, "  - Code Verifier: ${truecallerCodeVerifier?.take(20)}...")
+                Log.d(TAG, "========================================")
+                
                 val code = tcOAuthData.authorizationCode
                 val codeVerifier = truecallerCodeVerifier
 
                 if (code.isNullOrBlank() || codeVerifier.isNullOrBlank()) {
-                    Log.w(TAG, "Truecaller onSuccess but missing code/codeVerifier")
+                    Log.w(TAG, "❌ Truecaller onSuccess but missing code/codeVerifier")
+                    Log.w(TAG, "  - Code is blank: ${code.isNullOrBlank()}")
+                    Log.w(TAG, "  - CodeVerifier is blank: ${codeVerifier.isNullOrBlank()}")
+                    // Don't show error toast - just log and let user try OTP normally
                     return
                 }
 
                 // Skip OTP: authenticate directly with backend using Truecaller OAuth code + verifier
+                Log.d(TAG, "🔄 Starting Truecaller login with backend...")
                 viewModel.loginWithTruecaller(code = code, codeVerifier = codeVerifier)
             }
 
             override fun onVerificationRequired(tcOAuthError: TcOAuthError?) {
-                Log.w(TAG, "Truecaller onVerificationRequired: $tcOAuthError")
+                Log.w(TAG, "========================================")
+                Log.w(TAG, "⚠️ Truecaller onVerificationRequired")
+                Log.w(TAG, "  - Error: $tcOAuthError")
+                Log.w(TAG, "========================================")
                 // Fallback to manual phone + OTP (and stop further auto attempts for this session)
                 suppressTruecallerAutoStart = true
                 truecallerAutoAttempted = true
+                // Don't show error toast - just let user continue with OTP
             }
 
             override fun onFailure(tcOAuthError: TcOAuthError) {
-                Log.e(TAG, "Truecaller onFailure: $tcOAuthError")
+                Log.e(TAG, "========================================")
+                Log.e(TAG, "❌ Truecaller onFailure callback triggered!")
+                Log.e(TAG, "  - Error: $tcOAuthError")
+                Log.e(TAG, "  - Error Type: ${tcOAuthError.javaClass.simpleName}")
+                Log.e(TAG, "========================================")
+                
                 // Fallback to manual phone + OTP (and stop further auto attempts for this session)
                 suppressTruecallerAutoStart = true
                 truecallerAutoAttempted = true
-
-                // Common when using Truecaller "test mode": number not whitelisted.
-                val errorText = tcOAuthError.toString()
-                if (errorText.contains("test mode", ignoreCase = true) ||
-                    errorText.contains("40306")
-                ) {
-                    Toast.makeText(
-                        context,
-                        "Truecaller test-mode restriction on this number. Please use OTP or whitelist the number in Truecaller console.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+                // Don't show error toast - just let user continue with OTP normally
             }
         }
     }
 
     fun startTruecaller(act: FragmentActivity) {
-
-        // Don’t attempt if Client ID is not configured yet
+        // Don't attempt if Client ID is not configured yet
         if (truecallerClientId.isBlank() || truecallerClientId == "YOUR_TRUECALLER_CLIENT_ID") {
+            Log.w(TAG, "⚠️ Truecaller Client ID not configured")
+            Toast.makeText(context, "Truecaller not configured", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // SDK should already be initialized by button click handler, but double-check
+        if (!truecallerInitialized) {
+            Log.w(TAG, "⚠️ SDK not initialized, initializing now...")
+            try {
+                val tcSdkOptions = TcSdkOptions.Builder(act, tcOAuthCallback)
+                    .sdkOptions(TcSdkOptions.OPTION_VERIFY_ONLY_TC_USERS)
+                    .build()
+                TcSdk.init(tcSdkOptions)
+                truecallerInitialized = true
+                Log.d(TAG, "✅ SDK initialized in startTruecaller")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to initialize Truecaller SDK in startTruecaller", e)
+                Toast.makeText(context, "Truecaller initialization failed", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+
+        // Check if Truecaller is usable
+        try {
+            if (!TcSdk.getInstance().isOAuthFlowUsable) {
+                Toast.makeText(
+                    context,
+                    "Truecaller login not available. Please use OTP.",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to check Truecaller usability", e)
+            Toast.makeText(context, "Truecaller check failed", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -175,16 +251,33 @@ fun LoginScreen(
         truecallerCodeVerifier = codeVerifier
 
         // Configure OAuth parameters
-        TcSdk.getInstance().setOAuthState(stateRequested)
-        codeChallenge?.let { TcSdk.getInstance().setCodeChallenge(it) }
-        TcSdk.getInstance().setOAuthScopes(arrayOf("openid", "phone"))
-
-        // Start Truecaller flow
         try {
-            Log.d(TAG, "Truecaller getAuthorizationCode() starting")
-        TcSdk.getInstance().getAuthorizationCode(act)
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "🔧 Configuring Truecaller OAuth parameters...")
+            Log.d(TAG, "  - State: ${stateRequested.take(20)}...")
+            Log.d(TAG, "  - Code Challenge: ${codeChallenge?.take(20)}...")
+            Log.d(TAG, "  - Scopes: [openid, phone]")
+            Log.d(TAG, "========================================")
+            
+            TcSdk.getInstance().setOAuthState(stateRequested)
+            codeChallenge?.let { TcSdk.getInstance().setCodeChallenge(it) }
+            TcSdk.getInstance().setOAuthScopes(arrayOf("openid", "phone"))
+
+            // Start Truecaller flow
+            Log.d(TAG, "🚀 Starting Truecaller getAuthorizationCode()...")
+            TcSdk.getInstance().getAuthorizationCode(act)
+            Log.d(TAG, "✅ Truecaller getAuthorizationCode() called successfully")
         } catch (t: Throwable) {
-            Log.e(TAG, "Truecaller getAuthorizationCode() failed", t)
+            Log.e(TAG, "========================================")
+            Log.e(TAG, "❌ Truecaller getAuthorizationCode() failed")
+            Log.e(TAG, "  - Error: ${t.message}")
+            Log.e(TAG, "  - Stack trace:", t)
+            Log.e(TAG, "========================================")
+            Toast.makeText(
+                context,
+                "Failed to start Truecaller login: ${t.message}",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -478,6 +571,105 @@ fun LoginScreen(
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                // Truecaller Login Button (Manual trigger) - HIDDEN
+                /*
+                if (isTruecallerInstalled && truecallerClientId.isNotBlank() && truecallerClientId != "YOUR_TRUECALLER_CLIENT_ID") {
+                    // Divider with "OR"
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(1.dp)
+                                .background(BorderSecondary)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "OR",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(1.dp)
+                                .background(BorderSecondary)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Truecaller Button
+                    OutlinedButton(
+                        onClick = {
+                            val act = activity
+                            if (act != null) {
+                                Log.d(TAG, "========================================")
+                                Log.d(TAG, "🔘 Truecaller button clicked")
+                                Log.d(TAG, "  - SDK Initialized: $truecallerInitialized")
+                                Log.d(TAG, "  - Callback: ${tcOAuthCallback.javaClass.simpleName}")
+                                Log.d(TAG, "========================================")
+                                
+                                // CRITICAL: Always reinitialize SDK with callback before starting
+                                // This ensures the callback is properly registered
+                                try {
+                                    Log.d(TAG, "🔄 (Re)initializing Truecaller SDK with callback...")
+                                    val tcSdkOptions = TcSdkOptions.Builder(act, tcOAuthCallback)
+                                        .sdkOptions(TcSdkOptions.OPTION_VERIFY_ONLY_TC_USERS)
+                                        .build()
+                                    TcSdk.init(tcSdkOptions)
+                                    truecallerInitialized = true
+                                    Log.d(TAG, "✅ Truecaller SDK initialized successfully")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "❌ Failed to initialize Truecaller SDK", e)
+                                    Toast.makeText(
+                                        context,
+                                        "Truecaller not available. Please use OTP.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@OutlinedButton
+                                }
+                                
+                                // Start Truecaller flow
+                                startTruecaller(act)
+                            } else {
+                                Log.e(TAG, "❌ Activity is null, cannot start Truecaller")
+                                Toast.makeText(
+                                    context,
+                                    "Unable to start Truecaller login",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        enabled = !state.isLoading && state.termsAccepted,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Primary
+                        ),
+                        border = BorderStroke(
+                            width = 1.5.dp,
+                            color = Primary
+                        ),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(
+                            text = "Continue with Truecaller",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Primary
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+                */
 
                 // Terms & Conditions checkbox (required) - shown below Send OTP button
                 Column(
